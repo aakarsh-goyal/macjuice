@@ -1,0 +1,70 @@
+Power:
+
+    Battery Information:
+
+      Model Information:
+          Serial Number: F5DHFC006GX0000G45
+          Device Name: bq40z651
+          Pack Lot Code: 0
+          PCB Lot Code: 0
+          Firmware Version: 0b00
+          Hardware Revision: 100
+          Cell Revision: 551d
+      Charge Information:
+          The battery’s charge is below the warning level: No
+          Fully Charged: No
+          Charging: No
+          State of Charge (%): 69
+      Health Information:
+          Cycle Count: 224
+          Condition: Normal
+          Maximum Capacity: 91%
+
+    System Power Settings:
+
+      AC Power:
+          System Sleep Timer (Minutes): 0
+          Disk Sleep Timer (Minutes): 10
+          Display Sleep Timer (Minutes): 10
+          Sleep on Power Button: Yes
+          Wake on LAN: Yes
+          Hibernate Mode: 3
+          Low Power Mode: No
+          Prioritize Network Reachability Over Sleep: No
+      Battery Power:
+          System Sleep Timer (Minutes): 1
+          Disk Sleep Timer (Minutes): 10
+          Display Sleep Timer (Minutes): 10
+          Sleep on Power Button: Yes
+          Wake on LAN: Yes
+          Current Power Source: Yes
+          Hibernate Mode: 3
+          Low Power Mode: Yes
+          Prioritize Network Reachability Over Sleep: No
+          Reduce Brightness: Yes
+
+    Hardware Configuration:
+
+      UPS Installed: No
+
+    AC Charger Information:
+
+      Connected: No
+      Charging: No
+
+    Power Events:
+
+        Next Scheduled Events:
+
+              appPID: 335
+              Type: Wake
+              Scheduled By: com.apple.alarm.user-invisible-com.apple.osanalytics.hardhighengagementtimer
+              Time: 6/1/26, 5:29 AM
+              UserVisible: 0
+
+              appPID: 591
+              Type: Wake
+              Scheduled By: com.apple.alarm.user-invisible-com.apple.calaccessd.travelEngine.periodicRefreshTimer
+              Time: 6/1/26, 6:02 AM
+              UserVisible: 0
+
