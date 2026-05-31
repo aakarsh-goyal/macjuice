@@ -72,3 +72,15 @@ def test_sessions_ignores_short_blip():
         {"ts": 20, "charge_pct": 100, "charging": 1, "watts": 5},
     ]
     assert analytics.sessions(rows, min_duration_s=60) == []
+
+
+def test_charge_rate_pct_per_hour():
+    rows = [_row(0, 80, 5), _row(3600, 90, 5)]  # +10% over 1h
+    r = analytics.charge_rate(rows)
+    assert round(r["pct_per_hour"], 1) == 10.0
+
+
+def test_charge_rate_none_when_discharging():
+    rows = [_row(0, 90, -5), _row(3600, 80, -5)]  # going down
+    r = analytics.charge_rate(rows)
+    assert r["pct_per_hour"] is None
