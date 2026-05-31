@@ -3,3 +3,4 @@ __pycache__/
 battery.db
 .venv/
 venv/
+macjuice/.venv/
