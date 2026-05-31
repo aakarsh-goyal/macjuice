@@ -64,3 +64,20 @@ def test_parse_pmset_batt_ignores_ups():
     )
     d = sampler.parse_pmset_batt(text)
     assert d["charge_pct"] == 80
+
+
+def test_parse_system_profiler():
+    text = (FIX / "system_profiler_power.txt").read_text()
+    d = sampler.parse_system_profiler(text)
+    assert d["condition"] == "Normal"
+    assert 0 < d["max_capacity_reported_pct"] <= 200
+    assert d["cycle_count_reported"] >= 0
+
+
+def test_parse_hardware_model():
+    text = (
+        "Hardware:\n\n    Hardware Overview:\n\n"
+        "      Model Name: MacBook Pro\n"
+        "      Model Identifier: Mac15,3\n"
+    )
+    assert sampler.parse_hardware(text) == "MacBook Pro"
