@@ -42,3 +42,33 @@ def test_rate_rejects_clock_jump():
     rows = [_row(0, 100, -10), _row(-500, 90, -10)]
     r = analytics.discharge_rate(rows)
     assert r["pct_per_hour"] is None
+
+
+def test_runtime_since_full_charge():
+    rows = [_row(1000, 100, -5), _row(4600, 80, -5)]
+    events = [{"ts": 1000, "type": "full_charge"}]
+    out = analytics.runtime_since_full_charge(rows, events)
+    assert out["elapsed_min"] == 60
+    assert out["pct_used"] == 20
+
+
+def test_sessions_basic_discharge():
+    rows = [
+        {"ts": 0, "charge_pct": 100, "charging": 1, "watts": 0},
+        {"ts": 100, "charge_pct": 100, "charging": 0, "watts": -10},
+        {"ts": 250, "charge_pct": 95, "charging": 0, "watts": -10},
+        {"ts": 400, "charge_pct": 90, "charging": 1, "watts": 5},
+    ]
+    s = analytics.sessions(rows, min_duration_s=60)
+    assert len(s) == 1
+    assert s[0]["pct_used"] == 10
+    assert s[0]["duration_min"] == 5
+
+
+def test_sessions_ignores_short_blip():
+    rows = [
+        {"ts": 0, "charge_pct": 100, "charging": 1, "watts": 0},
+        {"ts": 10, "charge_pct": 100, "charging": 0, "watts": -10},
+        {"ts": 20, "charge_pct": 100, "charging": 1, "watts": 5},
+    ]
+    assert analytics.sessions(rows, min_duration_s=60) == []

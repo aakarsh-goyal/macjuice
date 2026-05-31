@@ -62,3 +62,50 @@ def estimated_full_runtime(rows: list, min_samples: int = 5) -> dict:
         "short_term_min": _runtime_from_window(rows, 30 * 60, min_samples),
         "medium_term_min": _runtime_from_window(rows, 4 * 3600, min_samples),
     }
+
+
+def runtime_since_full_charge(rows, events) -> dict:
+    fulls = [e for e in events if e.get("type") == "full_charge"]
+    if not fulls or not rows:
+        return {"elapsed_min": None, "pct_used": None}
+    full_ts = fulls[-1]["ts"]
+    after = [r for r in rows if r["ts"] >= full_ts]
+    if len(after) < 2:
+        return {"elapsed_min": None, "pct_used": None}
+    dt = after[-1]["ts"] - after[0]["ts"]
+    if dt <= 0:
+        return {"elapsed_min": None, "pct_used": None}
+    return {
+        "elapsed_min": dt / 60,
+        "pct_used": after[0]["charge_pct"] - after[-1]["charge_pct"],
+    }
+
+
+def sessions(rows, min_duration_s: int = 120) -> list:
+    """Discharge sessions: charging->discharging start, ->charging end."""
+    out = []
+    start = None
+    prev = None
+    for r in rows:
+        if prev is not None:
+            was, now = prev["charging"], r["charging"]
+            if was == 1 and now == 0:
+                start = r
+            elif was == 0 and now == 1 and start is not None:
+                out.append(_make_session(start, r))
+                start = None
+        prev = r
+    if start is not None and prev is not None and prev is not start:
+        out.append(_make_session(start, prev))
+    return [s for s in out if s["duration_s"] >= min_duration_s]
+
+
+def _make_session(start, end) -> dict:
+    dt = max(end["ts"] - start["ts"], 0)
+    return {
+        "start_ts": start["ts"],
+        "end_ts": end["ts"],
+        "duration_s": dt,
+        "duration_min": dt / 60,
+        "pct_used": start["charge_pct"] - end["charge_pct"],
+    }
