@@ -1,0 +1,51 @@
+import json
+
+from macjuice import app as appmod, store
+
+
+def _client(tmp_path, monkeypatch):
+    dbfile = tmp_path / "app.db"
+    conn = store.connect(dbfile)
+    store.init_db(conn)
+    for i in range(5):
+        store.insert_sample(conn, {**{c: None for c in store._COLS},
+            "ts": 1000 + i * 120, "source": "live", "charge_pct": 100 - i,
+            "max_mah": 3954, "design_mah": 4629, "watts": -10, "charging": 0})
+    monkeypatch.setenv("MACJUICE_DB", str(dbfile))
+    flask_app = appmod.create_app()
+    flask_app.config["TESTING"] = True
+    return flask_app.test_client()
+
+
+def test_history_endpoint(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch)
+    resp = c.get("/api/history?range=all")
+    data = json.loads(resp.data)
+    assert resp.status_code == 200
+    assert len(data["points"]) >= 1
+    assert "charge_pct" in data["points"][0]
+
+
+def test_history_downsamples(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch)
+    resp = c.get("/api/history?range=all&bucket=100000")
+    data = json.loads(resp.data)
+    assert len(data["points"]) == 1
+
+
+def test_analytics_endpoint(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch)
+    resp = c.get("/api/analytics")
+    data = json.loads(resp.data)
+    assert "health_capacity_pct" in data
+    assert "estimated_full_runtime" in data
+
+
+def test_live_endpoint(tmp_path, monkeypatch):
+    from macjuice import sampler
+    monkeypatch.setattr(sampler, "read_light", lambda: {"charge_pct": 77})
+    c = _client(tmp_path, monkeypatch)
+    resp = c.get("/api/live")
+    data = json.loads(resp.data)
+    assert data["charge_pct"] == 77
+    assert "sampled_at" in data
