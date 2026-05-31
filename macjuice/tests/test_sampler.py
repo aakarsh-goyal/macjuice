@@ -81,3 +81,29 @@ def test_parse_hardware_model():
         "      Model Identifier: Mac15,3\n"
     )
     assert sampler.parse_hardware(text) == "MacBook Pro"
+
+
+def test_read_merges_light_and_heavy(monkeypatch):
+    monkeypatch.setattr(sampler, "read_light", lambda: {
+        "charge_pct": 50, "charging": 0, "watts": -10.0, "cycle_count": 223,
+    })
+    heavy_cache = {
+        "condition": "Normal", "max_capacity_reported_pct": 91,
+        "model": "MacBook Pro", "heavy_ts": 1000,
+    }
+    s = sampler.read(heavy_cache)
+    assert s["charge_pct"] == 50
+    assert s["condition"] == "Normal"
+    assert s["max_capacity_reported_pct"] == 91
+    assert s["model"] == "MacBook Pro"
+    assert s["heavy_ts"] == 1000
+    assert s["source"] == "live"
+    assert "ts" in s
+
+
+def test_read_with_no_heavy_cache(monkeypatch):
+    monkeypatch.setattr(sampler, "read_light", lambda: {"charge_pct": 42})
+    s = sampler.read(None)
+    assert s["charge_pct"] == 42
+    assert s["condition"] is None
+    assert s["max_capacity_reported_pct"] is None
