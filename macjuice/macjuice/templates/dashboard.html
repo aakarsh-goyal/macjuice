@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>macjuice</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; margin: 0;
+           background: #0b0d10; color: #e7eaee; }
+    header { padding: 16px 24px; font-size: 20px; font-weight: 600; }
+    .grid { display: grid; gap: 12px; padding: 0 24px 24px;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+    .card { background: #161a20; border: 1px solid #232a33; border-radius: 12px;
+            padding: 16px; }
+    .card .label { font-size: 12px; color: #8a93a0; text-transform: uppercase;
+                   letter-spacing: .04em; }
+    .card .value { font-size: 26px; font-weight: 700; margin-top: 6px; }
+    .charts { padding: 0 24px 40px; }
+    .chartbox { background: #161a20; border: 1px solid #232a33;
+                border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+    .stamp { color: #8a93a0; font-size: 12px; padding: 0 24px 12px; }
+  </style>
+</head>
+<body>
+  <header>macjuice — battery dashboard</header>
+  <div class="stamp" id="stamp">loading…</div>
+  <div class="grid" id="cards"></div>
+  <div class="charts">
+    <div class="chartbox"><canvas id="chargeChart"></canvas></div>
+    <div class="chartbox"><canvas id="wattsChart"></canvas></div>
+  </div>
+
+  <script>
+    const fmt = (v, suf = "") => (v === null || v === undefined ? "—" : v + suf);
+    const card = (label, value) =>
+      `<div class="card"><div class="label">${label}</div>
+       <div class="value">${value}</div></div>`;
+
+    async function load() {
+      const [live, an, hist] = await Promise.all([
+        fetch("/api/live").then(r => r.json()),
+        fetch("/api/analytics").then(r => r.json()),
+        fetch("/api/history?range=24h").then(r => r.json()),
+      ]);
+
+      document.getElementById("cards").innerHTML = [
+        card("Charge", fmt(live.charge_pct, "%")),
+        card("Health (mAh ratio)",
+             fmt(an.health_capacity_pct ? an.health_capacity_pct.toFixed(1) : null, "%")),
+        card("Health (Apple)", fmt(an.health_reported_pct, "%")),
+        card("Cycles", fmt(live.cycle_count)),
+        card("Condition", fmt(live.condition)),
+        card("Temp", fmt(live.temp_c ? live.temp_c.toFixed(1) : null, "°C")),
+        card("Power", fmt(live.watts ? Math.abs(live.watts).toFixed(1) : null, " W")),
+        card("Time left", fmt(live.time_remaining_min, " min")),
+        card("Est. full (short)",
+             fmt(an.estimated_full_runtime.short_term_min
+               ? Math.round(an.estimated_full_runtime.short_term_min) : null, " min")),
+        card("Est. full (medium)",
+             fmt(an.estimated_full_runtime.medium_term_min
+               ? Math.round(an.estimated_full_runtime.medium_term_min) : null, " min")),
+      ].join("");
+
+      const pts = hist.points;
+      pts.push({ ts: live.sampled_at, charge_pct: live.charge_pct,
+                 watts: live.watts });
+      const labels = pts.map(p => new Date(p.ts * 1000).toLocaleTimeString());
+
+      const ageMin = Math.round((Date.now() / 1000 - (live.ts || live.sampled_at)) / 60);
+      document.getElementById("stamp").textContent =
+        `last sampled ${ageMin} min ago`;
+
+      new Chart(document.getElementById("chargeChart"), {
+        type: "line",
+        data: { labels, datasets: [{ label: "Charge %",
+                 data: pts.map(p => p.charge_pct), borderColor: "#4caf78",
+                 tension: .25, pointRadius: 0 }] },
+        options: { plugins: { legend: { labels: { color: "#e7eaee" } } },
+                   scales: { x: { ticks: { color: "#8a93a0" } },
+                             y: { ticks: { color: "#8a93a0" } } } },
+      });
+      new Chart(document.getElementById("wattsChart"), {
+        type: "line",
+        data: { labels, datasets: [{ label: "Watts",
+                 data: pts.map(p => p.watts), borderColor: "#5b9bd5",
+                 tension: .25, pointRadius: 0 }] },
+        options: { plugins: { legend: { labels: { color: "#e7eaee" } } },
+                   scales: { x: { ticks: { color: "#8a93a0" } },
+                             y: { ticks: { color: "#8a93a0" } } } },
+      });
+    }
+    load();
+  </script>
+</body>
+</html>
