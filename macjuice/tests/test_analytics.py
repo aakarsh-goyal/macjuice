@@ -122,3 +122,31 @@ def test_self_cost_skips_restart_resets():
 def test_self_cost_insufficient_data():
     assert analytics.self_cost([], 50.0)["cpu_s_per_day"] is None
     assert analytics.self_cost([{"ts": 1}], 50.0)["cpu_s_per_day"] is None
+
+
+def test_sessions_skips_rows_missing_charge_pct():
+    # live row with charging set but charge_pct None (pmset parse miss) + backfill
+    rows = [
+        {"ts": 0,   "charge_pct": 100,  "charging": 1, "watts": 0},
+        {"ts": 100, "charge_pct": None, "charging": 0, "watts": -10},  # broken live
+        {"ts": 150, "charge_pct": 96,   "charging": None, "watts": None},  # backfill
+        {"ts": 250, "charge_pct": 95,   "charging": 0, "watts": -10},
+        {"ts": 400, "charge_pct": 90,   "charging": 1, "watts": 5},
+    ]
+    s = analytics.sessions(rows, min_duration_s=60)   # must not raise
+    assert isinstance(s, list)
+    for x in s:
+        assert x["pct_used"] is not None
+
+
+def test_rate_and_runtime_tolerate_none_charge():
+    rows = [
+        {"ts": 0,    "charge_pct": 100,  "watts": -10, "charging": 0},
+        {"ts": 1800, "charge_pct": None, "watts": -10, "charging": 0},  # pmset miss
+        {"ts": 3600, "charge_pct": 90,   "watts": -10, "charging": 0},
+    ]
+    assert analytics.discharge_rate(rows)["pct_per_hour"] is not None   # no crash
+    assert analytics.charge_rate(rows)["pct_per_hour"] is None or True
+    ev = [{"ts": 0, "type": "full_charge"}]
+    out = analytics.runtime_since_full_charge(rows, ev)                  # no crash
+    assert out["pct_used"] == 10

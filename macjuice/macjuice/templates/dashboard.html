@@ -830,16 +830,20 @@ async function loadCost() {
 }
 
 async function refresh() {
+  // Core (gauge/cards) drives the status pill.
   try {
     const [live, an] = await Promise.all([
       fetch("/api/live").then(r => r.json()),
       fetch("/api/analytics").then(r => r.json()),
     ]);
     renderLive(live, an);
-    await loadHistory(currentRange);
-    await loadSessions();
-    await loadCost();
   } catch (e) { setStatus(false); }
+  // Independent sections — a failure in one must NEVER blank the others.
+  loadHistory(currentRange).catch(() => {});
+  loadSessions().catch(() => {
+    $("sessions").innerHTML = `<tr><td class="empty" colspan="4">Couldn't load sessions — will retry.</td></tr>`;
+  });
+  loadCost().catch(() => {});
 }
 
 $("ranges").addEventListener("click", e => {

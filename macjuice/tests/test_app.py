@@ -123,3 +123,15 @@ def test_selfcost_endpoint(tmp_path, monkeypatch):
     assert resp.status_code == 200
     assert "cpu_s_per_day" in data and data["cpu_s_per_day"] > 0
     assert "pct_per_day" in data and "assumed_w" in data
+
+
+def test_analytics_endpoint_tolerates_none_charge(tmp_path, monkeypatch):
+    # a live row with charging set but charge_pct NULL must not 500 any endpoint
+    c = _client(tmp_path, monkeypatch)
+    import os
+    from macjuice import store as st
+    conn = st.connect(os.environ["MACJUICE_DB"])
+    st.insert_sample(conn, {**{col: None for col in st._COLS},
+        "ts": 99999, "source": "live", "charging": 0, "charge_pct": None})
+    for path in ("/api/analytics", "/api/sessions", "/api/history?range=all"):
+        assert c.get(path).status_code == 200

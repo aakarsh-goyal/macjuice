@@ -83,7 +83,14 @@ def _span(rows):
     return first, last, dt
 
 
+def _with_charge(rows):
+    """Rows usable for rate math: known timestamp and known charge level."""
+    return [r for r in rows
+            if r.get("ts") is not None and r.get("charge_pct") is not None]
+
+
 def discharge_rate(rows: list) -> dict:
+    rows = _with_charge(rows)
     span = _span(rows)
     if not span:
         return {"pct_per_hour": None, "avg_watts": None}
@@ -97,6 +104,7 @@ def discharge_rate(rows: list) -> dict:
 
 
 def charge_rate(rows: list) -> dict:
+    rows = _with_charge(rows)
     span = _span(rows)
     if not span:
         return {"pct_per_hour": None}
@@ -130,7 +138,8 @@ def runtime_since_full_charge(rows, events) -> dict:
     if not fulls or not rows:
         return {"elapsed_min": None, "pct_used": None}
     full_ts = fulls[-1]["ts"]
-    after = [r for r in rows if r["ts"] >= full_ts]
+    after = [r for r in rows if r.get("ts") is not None and r["ts"] >= full_ts
+             and r.get("charge_pct") is not None]
     if len(after) < 2:
         return {"elapsed_min": None, "pct_used": None}
     dt = after[-1]["ts"] - after[0]["ts"]
@@ -143,7 +152,14 @@ def runtime_since_full_charge(rows, events) -> dict:
 
 
 def sessions(rows, min_duration_s: int = 120) -> list:
-    """Discharge sessions: charging->discharging start, ->charging end."""
+    """Discharge sessions: charging->discharging start, ->charging end.
+
+    Only rows with both a known charging state and charge level participate —
+    backfill rows (no charging) and the occasional live row where pmset failed
+    to report a percentage (charge_pct None) are skipped, never crashed on.
+    """
+    rows = [r for r in rows
+            if r.get("charging") is not None and r.get("charge_pct") is not None]
     out = []
     start = None
     prev = None
