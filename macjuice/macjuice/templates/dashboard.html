@@ -451,12 +451,22 @@
 
       <div class="man-sec">
         <h3>How it works</h3>
-        <p>Two pieces share one small database:</p>
+        <p>Two background agents (macOS <i>launchd</i>) share one small database — both start automatically at login, no commands needed:</p>
         <ul>
-          <li><b>The collector</b> — a tiny background agent (macOS <i>launchd</i>) that wakes every <b>120&nbsp;seconds</b>, reads your battery via <code style="color:var(--teal)">ioreg</code> + <code style="color:var(--teal)">pmset</code> (and <code style="color:var(--teal)">system_profiler</code> once an hour), and appends one row to the database. It runs whether or not this page is open, and restarts at login.</li>
-          <li><b>This dashboard</b> — a read-only local web server that reads that database and draws what you see. It only needs to run when you want to look.</li>
+          <li><b>The collector</b> (<code style="color:var(--teal)">com.macjuice.collector</code>) — wakes every <b>120&nbsp;seconds</b>, reads your battery via <code style="color:var(--teal)">ioreg</code> + <code style="color:var(--teal)">pmset</code> (and <code style="color:var(--teal)">system_profiler</code> once an hour), and appends one row to the database.</li>
+          <li><b>The dashboard</b> (<code style="color:var(--teal)">com.macjuice.dashboard</code>) — a read-only local web server (this page) on <code style="color:var(--teal)">127.0.0.1:5137</code>. It's kept alive, so it's always available and <b>respawns automatically if it crashes</b>.</li>
         </ul>
-        <p class="dim">It's gentle on battery: the cheap reads take ~30&nbsp;ms; the heavy hourly read is cached. It takes no power assertion, so it <b>never wakes your Mac from sleep</b> — you just won't get samples while it's asleep, which is fine.</p>
+        <p class="dim">So you just open <b>localhost:5137</b> anytime — even after a reboot. It's gentle on battery: the cheap reads take ~30&nbsp;ms; the heavy hourly read is cached. It takes no power assertion, so it <b>never wakes your Mac from sleep</b> — you just won't get samples while it's asleep, which is fine.</p>
+      </div>
+
+      <div class="man-sec">
+        <h3>The buttons up top</h3>
+        <ul>
+          <li><b>✦ MANUAL</b> — this guide.</li>
+          <li><b>⏻ STOP</b> — turns macjuice off <i>now</i> (unloads the agents so they don't respawn). Choose "dashboard only" or "everything". It stays off until you start it again — but it <b>will come back at next login</b> unless you uninstall.</li>
+          <li><b>✕ UNINSTALL</b> — permanently removes both agents so they no longer run at login, with an option to also erase your recorded history. Your app code is untouched; reinstall anytime.</li>
+        </ul>
+        <p class="dim">The status pill shows "live · sampled Xs ago" while connected, and turns red "offline" if the dashboard isn't reachable.</p>
       </div>
 
       <div class="man-sec">
@@ -473,17 +483,18 @@
       </div>
 
       <div class="man-sec">
-        <h3>Turn the dashboard off / on</h3>
-        <p class="dim">This only closes the viewer. The collector keeps logging in the background.</p>
-        <div class="step-label">stop the dashboard</div>
-        <div class="cmd"><code>pkill -f macjuice.app</code><button class="cp">copy</button></div>
-        <div class="step-label">start it again, then open localhost:5137</div>
-        <div class="cmd"><code>cd ~/Projects/macjuice && MACJUICE_DB="$HOME/Library/Application Support/macjuice/battery.db" PYTHONPATH=macjuice macjuice/.venv/bin/python -m macjuice.app</code><button class="cp">copy</button></div>
+        <h3>Turn it off / on</h3>
+        <p class="dim">Easiest way is the <b>⏻ STOP</b> button up top. The commands below do the same thing from Terminal.</p>
+        <div class="step-label">stop the dashboard only (logging continues)</div>
+        <div class="cmd"><code>launchctl unload ~/Library/LaunchAgents/com.macjuice.dashboard.plist</code><button class="cp">copy</button></div>
+        <div class="step-label">start the dashboard again, then open localhost:5137</div>
+        <div class="cmd"><code>launchctl load ~/Library/LaunchAgents/com.macjuice.dashboard.plist</code><button class="cp">copy</button></div>
+        <p class="dim" style="margin-top:12px">Both agents also auto-start at login. The simplest "fix anything" is just re-running <code style="color:var(--teal)">./install.sh</code> (it reloads both).</p>
       </div>
 
       <div class="man-sec">
         <h3>Pause / resume background logging</h3>
-        <div class="step-label">check it's running</div>
+        <div class="step-label">check what's running</div>
         <div class="cmd"><code>launchctl list | grep macjuice</code><button class="cp">copy</button></div>
         <div class="step-label">pause logging (temporary)</div>
         <div class="cmd"><code>launchctl unload ~/Library/LaunchAgents/com.macjuice.collector.plist</code><button class="cp">copy</button></div>
@@ -493,8 +504,8 @@
 
       <div class="man-sec">
         <h3>Uninstall</h3>
-        <p class="dim">Removes the background agent. Your recorded data is kept unless you delete it.</p>
-        <div class="step-label">remove the agent</div>
+        <p class="dim">Easiest way is the <b>✕ UNINSTALL</b> button up top (it offers "keep data" or "erase data"). Same thing from Terminal:</p>
+        <div class="step-label">remove both agents (keeps your data)</div>
         <div class="cmd"><code>cd ~/Projects/macjuice && ./uninstall.sh</code><button class="cp">copy</button></div>
         <div class="step-label">also delete all recorded data (optional)</div>
         <div class="cmd"><code>rm -rf "$HOME/Library/Application Support/macjuice"</code><button class="cp">copy</button></div>
@@ -502,7 +513,7 @@
 
       <div class="man-sec">
         <h3>Reinstall / update</h3>
-        <div class="step-label">reinstall (safe to re-run anytime)</div>
+        <div class="step-label">reinstall (safe to re-run anytime — reloads both agents)</div>
         <div class="cmd"><code>cd ~/Projects/macjuice && ./install.sh</code><button class="cp">copy</button></div>
         <div class="step-label">pull the latest version from GitHub</div>
         <div class="cmd"><code>cd ~/Projects/macjuice && git pull && ./install.sh</code><button class="cp">copy</button></div>
@@ -514,15 +525,16 @@
           <li><b>Code</b> — <code style="color:var(--teal)">~/Projects/macjuice</code></li>
           <li><b>Database</b> — <code style="color:var(--teal)">~/Library/Application Support/macjuice/battery.db</code></li>
           <li><b>Logs</b> — <code style="color:var(--teal)">~/Library/Logs/macjuice/</code></li>
-          <li><b>Agent</b> — <code style="color:var(--teal)">~/Library/LaunchAgents/com.macjuice.collector.plist</code></li>
+          <li><b>Collector agent</b> — <code style="color:var(--teal)">~/Library/LaunchAgents/com.macjuice.collector.plist</code></li>
+          <li><b>Dashboard agent</b> — <code style="color:var(--teal)">~/Library/LaunchAgents/com.macjuice.dashboard.plist</code></li>
           <li><b>Repo</b> — <code style="color:var(--teal)">github.com/raghavtripped/macjuice</code></li>
         </ul>
       </div>
 
       <div class="man-sec">
         <h3>Troubleshooting</h3>
-        <p class="warn">Page won't load? The dashboard server isn't running — start it with the command under "Turn the dashboard off / on".</p>
-        <p class="dim" style="margin-top:12px">Charts look empty or flat? The collector needs a little runtime to gather live points — give it a few minutes, or check it's loaded with <code style="color:var(--teal)">launchctl list | grep macjuice</code>. The status pill (top-right) turns red when it can't reach the server.</p>
+        <p class="warn">Page won't load? The dashboard agent isn't running. Reload it with the "start the dashboard again" command above, or just run <code style="color:var(--teal)">./install.sh</code>.</p>
+        <p class="dim" style="margin-top:12px">Charts look empty or flat? The collector needs a little runtime to gather live points — give it a few minutes, or check both agents are loaded with <code style="color:var(--teal)">launchctl list | grep macjuice</code>. The status pill (top-right) turns red when it can't reach the server.</p>
       </div>
 
     </div>
