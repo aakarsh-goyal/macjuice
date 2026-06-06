@@ -283,6 +283,9 @@
     .uninstall-btn:hover { color: var(--red); background: rgba(255,90,60,.12); border-color: var(--red); box-shadow: none; }
     .modal .danger-note { border-left: 2px solid var(--red); padding: 2px 0 2px 12px; color: var(--ink);
       font-size: 12.5px; line-height: 1.6; margin: 0 0 16px; }
+    .mk-legend { display: flex; gap: 18px; color: var(--faint); font-size: 11px; letter-spacing: .04em; margin: -6px 0 14px; }
+    .mk-legend span { display: inline-flex; align-items: center; }
+    .mk-legend i { width: 9px; height: 9px; border-radius: 2px; margin-right: 7px; }
   </style>
 </head>
 <body>
@@ -367,6 +370,11 @@
         <button data-r="30d">30D</button>
         <button data-r="all">ALL</button>
       </div>
+    </div>
+    <div class="mk-legend reveal" style="animation-delay:.37s">
+      <span><i style="background:var(--teal)"></i>plugged in</span>
+      <span><i style="background:var(--amber)"></i>unplugged</span>
+      <span><i style="background:#8ae06a"></i>full charge</span>
     </div>
     <div class="panel reveal" style="animation-delay:.38s"><canvas id="chargeChart"></canvas></div>
     <div class="panel reveal" style="animation-delay:.4s"><canvas id="wattsChart"></canvas></div>
@@ -666,8 +674,51 @@ function gradient(ctx, color) {
   return g;
 }
 
+// ---- event markers (plug/unplug/full) drawn as vertical lines, no extra deps ----
+const markerColor = t => t === "plug_in" ? css("--teal")
+  : t === "unplug" ? css("--amber")
+  : t === "full_charge" ? "#8ae06a" : css("--muted");
+
+function computeMarkers(pts, events) {
+  if (!pts.length || !events.length) return [];
+  const lo = pts[0].ts, hi = pts[pts.length - 1].ts;
+  const inRange = events.filter(e => e.ts >= lo && e.ts <= hi);
+  const trimmed = inRange.length > 150 ? inRange.slice(-150) : inRange;  // avoid clutter
+  return trimmed.map(e => {
+    let idx = 0, best = Infinity;
+    for (let i = 0; i < pts.length; i++) {
+      const d = Math.abs(pts[i].ts - e.ts);
+      if (d < best) { best = d; idx = i; }
+    }
+    return { idx, type: e.type };
+  });
+}
+
+const eventMarkers = {
+  id: "eventMarkers",
+  afterDatasetsDraw(chart) {
+    const ms = chart.$markers;
+    if (!ms || !ms.length) return;
+    const { ctx, chartArea: { top, bottom }, scales: { x } } = chart;
+    ms.forEach(m => {
+      const px = x.getPixelForValue(m.idx);
+      if (px == null || Number.isNaN(px)) return;
+      const col = markerColor(m.type);
+      ctx.save();
+      ctx.strokeStyle = col; ctx.globalAlpha = .5; ctx.lineWidth = 1.4; ctx.setLineDash([3, 4]);
+      ctx.beginPath(); ctx.moveTo(px, top); ctx.lineTo(px, bottom); ctx.stroke();
+      ctx.setLineDash([]); ctx.globalAlpha = 1; ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(px, top + 3, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    });
+  },
+};
+
 async function loadHistory(range) {
-  const hist = await fetch(`/api/history?range=${range}`).then(r => r.json());
+  const [hist, events] = await Promise.all([
+    fetch(`/api/history?range=${range}`).then(r => r.json()),
+    fetch("/api/events").then(r => r.json()).catch(() => []),
+  ]);
   const pts = hist.points.slice();
   if (lastLive) pts.push({ ts: lastLive.sampled_at, charge_pct: lastLive.charge_pct, watts: lastLive.watts });
   const labels = pts.map(p => {
@@ -676,6 +727,7 @@ async function loadHistory(range) {
       ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       : d.toLocaleDateString([], { month: "short", day: "numeric" });
   });
+  const markers = computeMarkers(pts, events);
   const amber = css("--amber"), teal = css("--teal");
   const cctx = $("chargeChart").getContext("2d");
   const wctx = $("wattsChart").getContext("2d");
@@ -687,15 +739,17 @@ async function loadHistory(range) {
     borderColor: teal, backgroundColor: gradient(wctx, teal), fill: true,
     borderWidth: 2, tension: .35, pointRadius: 0 }] };
 
-  if (chargeChart) { chargeChart.data = chargeData; chargeChart.update(); }
-  else chargeChart = new Chart(cctx, { type: "line", data: chargeData,
+  if (chargeChart) { chargeChart.data = chargeData; chargeChart.$markers = markers; chargeChart.update(); }
+  else { chargeChart = new Chart(cctx, { type: "line", data: chargeData, plugins: [eventMarkers],
     options: { ...chartBase(amber), scales: { ...chartBase(amber).scales,
       y: { ...chartBase(amber).scales.y, min: 0, max: 100, ticks: { ...chartBase(amber).scales.y.ticks, callback: v => v + "%" } } } } });
+    chargeChart.$markers = markers; chargeChart.update(); }
 
-  if (wattsChart) { wattsChart.data = wattsData; wattsChart.update(); }
-  else wattsChart = new Chart(wctx, { type: "line", data: wattsData,
+  if (wattsChart) { wattsChart.data = wattsData; wattsChart.$markers = markers; wattsChart.update(); }
+  else { wattsChart = new Chart(wctx, { type: "line", data: wattsData, plugins: [eventMarkers],
     options: { ...chartBase(teal), scales: { ...chartBase(teal).scales,
       y: { ...chartBase(teal).scales.y, ticks: { ...chartBase(teal).scales.y.ticks, callback: v => v + "W" } } } } });
+    wattsChart.$markers = markers; wattsChart.update(); }
 }
 
 async function loadSessions() {
