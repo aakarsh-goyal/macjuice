@@ -31,3 +31,19 @@ def test_collect_once_writes_row(tmp_path, monkeypatch):
     assert len(rows) == 1
     assert rows[0]["charge_pct"] == 80
     assert state["charge_pct"] == 80
+
+
+def test_record_self_writes_metric(tmp_path, monkeypatch):
+    from macjuice import selfmeter
+    monkeypatch.setattr(selfmeter, "read", lambda: {
+        "collector_cpu_s": 1.2, "dashboard_cpu_s": 0.5,
+        "collector_rss_mb": 20.0, "dashboard_rss_mb": 50.0,
+    })
+    conn = store.connect(tmp_path / "s.db")
+    store.init_db(conn)
+    collector.record_self(conn)
+    rows = store.query_self_metrics(conn, 0, 2**31)
+    assert len(rows) == 1
+    assert rows[0]["collector_cpu_s"] == 1.2
+    assert rows[0]["dashboard_rss_mb"] == 50.0
+    assert rows[0]["ts"] is not None

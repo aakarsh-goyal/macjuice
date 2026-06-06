@@ -24,7 +24,15 @@ CREATE TABLE IF NOT EXISTS events (
 );
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS self_metrics (
+  ts INTEGER PRIMARY KEY,
+  collector_cpu_s REAL, dashboard_cpu_s REAL,
+  collector_rss_mb REAL, dashboard_rss_mb REAL
+);
 """
+
+_SELF_COLS = ["ts", "collector_cpu_s", "dashboard_cpu_s",
+              "collector_rss_mb", "dashboard_rss_mb"]
 
 
 def connect(path) -> sqlite3.Connection:
@@ -57,6 +65,25 @@ def insert_event(conn, ts, type_, source, detail) -> None:
         (ts, type_, source, detail),
     )
     conn.commit()
+
+
+def insert_self_metric(conn, row: dict) -> None:
+    vals = [row.get(c) for c in _SELF_COLS]
+    placeholders = ",".join("?" * len(_SELF_COLS))
+    conn.execute(
+        f"INSERT OR IGNORE INTO self_metrics ({','.join(_SELF_COLS)}) "
+        f"VALUES ({placeholders})",
+        vals,
+    )
+    conn.commit()
+
+
+def query_self_metrics(conn, start, end) -> list:
+    cur = conn.execute(
+        "SELECT * FROM self_metrics WHERE ts BETWEEN ? AND ? ORDER BY ts",
+        (start, end),
+    )
+    return [dict(r) for r in cur.fetchall()]
 
 
 def query_range(conn, start, end) -> list:

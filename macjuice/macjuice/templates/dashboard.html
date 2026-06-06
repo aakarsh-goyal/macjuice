@@ -286,6 +286,17 @@
     .mk-legend { display: flex; gap: 18px; color: var(--faint); font-size: 11px; letter-spacing: .04em; margin: -6px 0 14px; }
     .mk-legend span { display: inline-flex; align-items: center; }
     .mk-legend i { width: 9px; height: 9px; border-radius: 2px; margin-right: 7px; }
+
+    /* ---- self-cost panel ---- */
+    .cost-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+    @media (max-width: 920px) { .cost-grid { grid-template-columns: repeat(2, 1fr); } }
+    .cost-grid .tile .val.hero { color: var(--accent); font-size: 30px; }
+    .cost-foot { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 16px;
+      padding-top: 14px; border-top: 1px dashed var(--line); color: var(--muted); font-size: 12px; }
+    .cost-foot b { color: var(--ink); font-weight: 500; }
+    .verdict { display: inline-block; margin-top: 14px; padding: 8px 14px; border-radius: 999px;
+      font-size: 12.5px; border: 1px solid var(--line-2); background: var(--panel); color: var(--teal); }
+    .cost-note { color: var(--faint); font-size: 11.5px; line-height: 1.6; margin-top: 14px; }
   </style>
 </head>
 <body>
@@ -386,6 +397,25 @@
         <thead><tr><th>started</th><th>duration</th><th>used</th><th style="width:38%">drain</th></tr></thead>
         <tbody id="sessions"><tr><td class="empty" colspan="4">loading…</td></tr></tbody>
       </table>
+    </div>
+
+    <!-- SELF-COST -->
+    <div class="section-title reveal" style="animation-delay:.46s"><h2>macjuice's own cost</h2><div class="ln"></div></div>
+    <div class="panel reveal" style="animation-delay:.48s">
+      <div class="cost-grid" id="cost-cards">
+        <div class="tile"><div class="k">est. battery / day</div><div class="val hero" id="c-pct">—</div></div>
+        <div class="tile"><div class="k">cpu time / day</div><div class="val" id="c-cpu">—</div></div>
+        <div class="tile"><div class="k">energy / day</div><div class="val" id="c-energy">—</div></div>
+        <div class="tile"><div class="k">memory now</div><div class="val" id="c-mem">—</div></div>
+        <div class="tile"><div class="k">measured over</div><div class="val" id="c-span">—</div></div>
+      </div>
+      <div class="cost-foot">
+        <span>collector <b id="c-col">—</b></span>
+        <span>dashboard <b id="c-dash">—</b></span>
+        <span>battery capacity <b id="c-batt">—</b></span>
+      </div>
+      <div id="c-verdict"></div>
+      <div class="cost-note" id="c-note">CPU time is measured exactly. Energy is an estimate assuming the SoC draws ~2&nbsp;W while macjuice's work runs (a no-sudo upper-bound proxy — the real figure is likely lower).</div>
     </div>
 
     <footer>macjuice · built on ioreg · pmset · system_profiler — <a href="https://github.com/raghavtripped/macjuice">github.com/raghavtripped/macjuice</a> · <a href="#" id="manual-link">open manual</a></footer>
@@ -767,6 +797,38 @@ async function loadSessions() {
   }).join("");
 }
 
+const n1 = x => (x == null ? "—" : (Math.round(x * 10) / 10));
+async function loadCost() {
+  const c = await fetch("/api/selfcost").then(r => r.json()).catch(() => null);
+  if (!c) return;
+  if (c.cpu_s_per_day == null) {
+    $("c-pct").textContent = "…";
+    $("c-note").textContent = "Gathering data — overhead figures appear after the collector has logged a few cycles.";
+    return;
+  }
+  $("c-pct").innerHTML = c.pct_per_day != null
+    ? `${c.pct_per_day < 0.01 ? c.pct_per_day.toFixed(3) : c.pct_per_day.toFixed(2)}<small>%</small>` : "—";
+  $("c-cpu").innerHTML = `${n1(c.cpu_s_per_day)}<small>s</small>`;
+  $("c-energy").innerHTML = c.energy_wh_per_day != null
+    ? `${n1(c.energy_wh_per_day * 1000)}<small>mWh</small>` : "—";
+  const mem = (c.collector_rss_mb || 0) + (c.dashboard_rss_mb || 0);
+  $("c-mem").innerHTML = `${n1(mem)}<small>MB</small>`;
+  $("c-span").innerHTML = `${n1(c.measured_hours)}<small>h</small>`;
+  $("c-col").textContent = `${n1(c.collector_cpu_s_per_day)} s/day`;
+  $("c-dash").textContent = `${n1(c.dashboard_cpu_s_per_day)} s/day`;
+  $("c-batt").textContent = `${n1(c.battery_wh)} Wh`;
+
+  // cost-benefit verdict
+  const p = c.pct_per_day;
+  let v = "", col = css("--teal");
+  if (p == null) { v = ""; }
+  else if (p < 0.2) v = `≈ ${p < 0.01 ? "<0.01" : p.toFixed(2)}% of a full charge per day — negligible. Easily worth it.`;
+  else if (p < 1) v = `≈ ${p.toFixed(2)}% of a full charge per day — minor.`;
+  else { v = `≈ ${p.toFixed(1)}% of a full charge per day — noticeable; consider a slower sample interval.`; col = css("--amber"); }
+  const el = $("c-verdict");
+  if (v) { el.innerHTML = `<span class="verdict" style="color:${col};border-color:${col}55">${v}</span>`; }
+}
+
 async function refresh() {
   try {
     const [live, an] = await Promise.all([
@@ -776,6 +838,7 @@ async function refresh() {
     renderLive(live, an);
     await loadHistory(currentRange);
     await loadSessions();
+    await loadCost();
   } catch (e) { setStatus(false); }
 }
 

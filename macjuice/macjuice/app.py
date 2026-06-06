@@ -133,6 +133,16 @@ def create_app() -> Flask:
             _stop_agent(label)
         return jsonify({"stopped": labels})
 
+    @app.route("/api/selfcost")
+    def selfcost():
+        conn = _conn()
+        rows = store.query_self_metrics(conn, 0, 2**31)
+        latest = store.latest(conn) or {}
+        dz = latest.get("design_mah")
+        volts = latest.get("voltage_v") or 11.4
+        battery_wh = (dz / 1000 * volts) if dz else 50.0
+        return jsonify(analytics.self_cost(rows, battery_wh))
+
     @app.route("/api/uninstall", methods=["POST"])
     def uninstall():
         wipe = request.args.get("data") == "wipe"

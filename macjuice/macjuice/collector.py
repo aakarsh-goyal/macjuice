@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 
-from . import sampler, store
+from . import sampler, selfmeter, store
 from .paths import db_path
 
 HEAVY_INTERVAL_S = 3600
@@ -32,6 +32,14 @@ def collect_once(conn, heavy_cache, prev) -> dict:
     return sample
 
 
+def record_self(conn) -> dict:
+    """Log macjuice's own CPU/memory cost for the overhead dashboard."""
+    m = selfmeter.read()
+    m["ts"] = int(time.time())
+    store.insert_self_metric(conn, m)
+    return m
+
+
 def run(interval_s: int = DEFAULT_INTERVAL_S) -> None:  # pragma: no cover
     conn = store.connect(db_path())
     store.init_db(conn)
@@ -43,6 +51,7 @@ def run(interval_s: int = DEFAULT_INTERVAL_S) -> None:  # pragma: no cover
             heavy_cache = sampler.read_heavy()
         try:
             prev = collect_once(conn, heavy_cache, prev)
+            record_self(conn)
         except Exception as exc:
             print(f"[macjuice] sample failed: {exc}", flush=True)
         time.sleep(interval_s)

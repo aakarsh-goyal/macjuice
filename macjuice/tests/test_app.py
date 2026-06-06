@@ -106,3 +106,20 @@ def test_uninstall_with_data_wipe(tmp_path, monkeypatch):
     assert data["data_wiped"] is True
     assert wiped == [True]
     assert removed == ["com.macjuice.collector", "com.macjuice.dashboard"]
+
+
+def test_selfcost_endpoint(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch)
+    # seed a couple self_metrics rows directly
+    import os
+    from macjuice import store as st
+    conn = st.connect(os.environ["MACJUICE_DB"])
+    st.insert_self_metric(conn, {"ts": 0, "collector_cpu_s": 10, "dashboard_cpu_s": 5,
+                                 "collector_rss_mb": 20, "dashboard_rss_mb": 50})
+    st.insert_self_metric(conn, {"ts": 7200, "collector_cpu_s": 12, "dashboard_cpu_s": 6,
+                                 "collector_rss_mb": 22, "dashboard_rss_mb": 52})
+    resp = c.get("/api/selfcost")
+    data = json.loads(resp.data)
+    assert resp.status_code == 200
+    assert "cpu_s_per_day" in data and data["cpu_s_per_day"] > 0
+    assert "pct_per_day" in data and "assumed_w" in data

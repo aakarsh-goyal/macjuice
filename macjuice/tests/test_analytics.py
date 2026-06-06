@@ -84,3 +84,41 @@ def test_charge_rate_none_when_discharging():
     rows = [_row(0, 90, -5), _row(3600, 80, -5)]  # going down
     r = analytics.charge_rate(rows)
     assert r["pct_per_hour"] is None
+
+
+def test_self_cost_basic():
+    # collector burns 1 CPU-second per hour over 2 hours; dashboard burns 0.5/hr
+    rows = [
+        {"ts": 0,    "collector_cpu_s": 10.0, "dashboard_cpu_s": 5.0,
+         "collector_rss_mb": 20, "dashboard_rss_mb": 50},
+        {"ts": 3600, "collector_cpu_s": 11.0, "dashboard_cpu_s": 5.5,
+         "collector_rss_mb": 21, "dashboard_rss_mb": 51},
+        {"ts": 7200, "collector_cpu_s": 12.0, "dashboard_cpu_s": 6.0,
+         "collector_rss_mb": 22, "dashboard_rss_mb": 52},
+    ]
+    c = analytics.self_cost(rows, battery_wh=50.0, assumed_w=2.0)
+    # collector: 2 cpu-s over 7200s -> 24 cpu-s/day; dashboard: 1 -> 12; total 36
+    assert round(c["collector_cpu_s_per_day"], 1) == 24.0
+    assert round(c["dashboard_cpu_s_per_day"], 1) == 12.0
+    assert round(c["cpu_s_per_day"], 1) == 36.0
+    # energy = 36 * 2 / 3600 = 0.02 Wh/day ; pct = 0.02/50*100 = 0.04
+    assert round(c["energy_wh_per_day"], 4) == 0.02
+    assert round(c["pct_per_day"], 3) == 0.04
+    assert c["collector_rss_mb"] == 22  # latest
+
+
+def test_self_cost_skips_restart_resets():
+    # cumulative counter drops (process restarted) — the reset must not count
+    rows = [
+        {"ts": 0,    "collector_cpu_s": 100.0, "dashboard_cpu_s": None},
+        {"ts": 3600, "collector_cpu_s": 2.0,   "dashboard_cpu_s": None},  # restart
+        {"ts": 7200, "collector_cpu_s": 5.0,   "dashboard_cpu_s": None},  # +3
+    ]
+    c = analytics.self_cost(rows, battery_wh=50.0, assumed_w=2.0)
+    # only the +3 increase counts, over 7200s -> 36 cpu-s/day
+    assert round(c["collector_cpu_s_per_day"], 1) == 36.0
+
+
+def test_self_cost_insufficient_data():
+    assert analytics.self_cost([], 50.0)["cpu_s_per_day"] is None
+    assert analytics.self_cost([{"ts": 1}], 50.0)["cpu_s_per_day"] is None
