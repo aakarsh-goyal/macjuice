@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import subprocess
 import time
 
 from flask import Flask, jsonify, render_template, request
@@ -9,11 +11,26 @@ from .paths import db_path
 
 _RANGES = {"24h": 86400, "7d": 7 * 86400, "30d": 30 * 86400, "all": None}
 
+COLLECTOR_LABEL = "com.macjuice.collector"
+DASHBOARD_LABEL = "com.macjuice.dashboard"
+
 
 def _conn():
     conn = store.connect(db_path())
     store.init_db(conn)
     return conn
+
+
+def _stop_agent(label: str) -> None:
+    """Unload a macjuice launchd agent so it stays stopped (no KeepAlive respawn).
+
+    Runs detached after a 1s delay so the HTTP response returns before launchd
+    tears down this process (relevant when stopping the dashboard itself).
+    """
+    plist = os.path.expanduser(f"~/Library/LaunchAgents/{label}.plist")
+    subprocess.Popen(
+        ["/bin/sh", "-c", f"sleep 1; launchctl unload '{plist}'"]
+    )
 
 
 def _bucket_for(range_key: str) -> int:
@@ -87,6 +104,19 @@ def create_app() -> Flask:
             rows, evs
         )
         return jsonify(out)
+
+    @app.route("/api/shutdown", methods=["POST"])
+    def shutdown():
+        target = request.args.get("target", "dashboard")
+        if target == "dashboard":
+            labels = [DASHBOARD_LABEL]
+        elif target == "all":
+            labels = [COLLECTOR_LABEL, DASHBOARD_LABEL]
+        else:
+            return jsonify({"error": f"unknown target: {target}"}), 400
+        for label in labels:
+            _stop_agent(label)
+        return jsonify({"stopped": labels})
 
     return app
 

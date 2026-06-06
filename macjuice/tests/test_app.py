@@ -49,3 +49,34 @@ def test_live_endpoint(tmp_path, monkeypatch):
     data = json.loads(resp.data)
     assert data["charge_pct"] == 77
     assert "sampled_at" in data
+
+
+def test_shutdown_dashboard(tmp_path, monkeypatch):
+    called = []
+    monkeypatch.setattr(appmod, "_stop_agent", lambda label: called.append(label))
+    c = _client(tmp_path, monkeypatch)
+    resp = c.post("/api/shutdown?target=dashboard")
+    data = json.loads(resp.data)
+    assert resp.status_code == 200
+    assert data["stopped"] == ["com.macjuice.dashboard"]
+    assert called == ["com.macjuice.dashboard"]
+
+
+def test_shutdown_all_stops_collector_then_dashboard(tmp_path, monkeypatch):
+    called = []
+    monkeypatch.setattr(appmod, "_stop_agent", lambda label: called.append(label))
+    c = _client(tmp_path, monkeypatch)
+    resp = c.post("/api/shutdown?target=all")
+    data = json.loads(resp.data)
+    assert resp.status_code == 200
+    assert called == ["com.macjuice.collector", "com.macjuice.dashboard"]
+    assert data["stopped"] == ["com.macjuice.collector", "com.macjuice.dashboard"]
+
+
+def test_shutdown_unknown_target(tmp_path, monkeypatch):
+    called = []
+    monkeypatch.setattr(appmod, "_stop_agent", lambda label: called.append(label))
+    c = _client(tmp_path, monkeypatch)
+    resp = c.post("/api/shutdown?target=bogus")
+    assert resp.status_code == 400
+    assert called == []
