@@ -279,6 +279,10 @@
     .modal button.ghost:hover { color: var(--ink); border-color: var(--line-2); }
     .stopped-note { text-align: center; }
     .stopped-note .big { font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; font-size: 22px; color: var(--red); margin-bottom: 10px; }
+    .uninstall-btn { color: var(--muted); border-color: var(--line-2); }
+    .uninstall-btn:hover { color: var(--red); background: rgba(255,90,60,.12); border-color: var(--red); box-shadow: none; }
+    .modal .danger-note { border-left: 2px solid var(--red); padding: 2px 0 2px 12px; color: var(--ink);
+      font-size: 12.5px; line-height: 1.6; margin: 0 0 16px; }
   </style>
 </head>
 <body>
@@ -297,6 +301,7 @@
         <span class="model" id="model">—</span>
         <button class="manual-btn" id="manual-open">✦ MANUAL</button>
         <button class="kill-btn" id="kill-open" title="stop macjuice">⏻ STOP</button>
+        <button class="kill-btn uninstall-btn" id="uninstall-open" title="uninstall macjuice">✕ UNINSTALL</button>
         <span class="pill" id="status"><span class="dot"></span><span id="status-txt">connecting…</span></span>
       </div>
     </div>
@@ -399,6 +404,32 @@
         </div>
         <div class="step-label">to start it again, run in Terminal:</div>
         <div class="cmd"><code id="kill-restart">cd ~/Projects/macjuice && ./install.sh</code><button class="cp">copy</button></div>
+        <p style="color:var(--faint);font-size:11.5px;text-align:center;margin-top:14px">You can close this tab now.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== UNINSTALL MODAL ===== -->
+  <div class="modal-back" id="uninstall-back">
+    <div class="modal">
+      <div id="uninstall-choose">
+        <h3>✕ Uninstall macjuice</h3>
+        <p class="danger-note">This removes both background agents (logging + dashboard) so they no longer run at login. Your app code at <code style="color:var(--teal)">~/Projects/macjuice</code> stays — reinstall anytime with <code style="color:var(--teal)">./install.sh</code>.</p>
+        <div class="acts">
+          <button class="act danger" id="uninstall-keep">Uninstall — keep my data
+            <small>Removes the agents. Your recorded battery history is preserved.</small></button>
+          <button class="act danger" id="uninstall-wipe">Uninstall &amp; erase all data
+            <small>Removes the agents AND permanently deletes all recorded history.</small></button>
+          <button class="act ghost" id="uninstall-cancel">Cancel</button>
+        </div>
+      </div>
+      <div id="uninstall-done" style="display:none">
+        <div class="stopped-note">
+          <div class="big">✕ uninstalled</div>
+          <p id="uninstall-done-msg" style="text-align:center"></p>
+        </div>
+        <div class="step-label">to reinstall later, run in Terminal:</div>
+        <div class="cmd"><code>cd ~/Projects/macjuice &amp;&amp; ./install.sh</code><button class="cp">copy</button></div>
         <p style="color:var(--faint);font-size:11.5px;text-align:center;margin-top:14px">You can close this tab now.</p>
       </div>
     </div>
@@ -696,7 +727,7 @@ $("manual-open").addEventListener("click", openManual);
 $("manual-link").addEventListener("click", openManual);
 $("manual-close").addEventListener("click", closeManual);
 $("overlay").addEventListener("click", closeManual);
-document.addEventListener("keydown", e => { if (e.key === "Escape") { closeManual(); closeKill(); } });
+document.addEventListener("keydown", e => { if (e.key === "Escape") { closeManual(); closeKill(); closeUninstall(); } });
 document.querySelectorAll(".cmd .cp").forEach(btn => {
   btn.addEventListener("click", () => {
     const code = btn.previousElementSibling.textContent;
@@ -728,6 +759,25 @@ async function doStop(target) {
 }
 $("kill-dash").addEventListener("click", () => doStop("dashboard"));
 $("kill-all").addEventListener("click", () => doStop("all"));
+
+// ---- uninstall ----
+function openUninstall() { $("uninstall-back").classList.add("show"); }
+function closeUninstall() { $("uninstall-back").classList.remove("show"); }
+$("uninstall-open").addEventListener("click", openUninstall);
+$("uninstall-cancel").addEventListener("click", closeUninstall);
+$("uninstall-back").addEventListener("click", e => { if (e.target === $("uninstall-back")) closeUninstall(); });
+
+async function doUninstall(wipe) {
+  try { await fetch(`/api/uninstall${wipe ? "?data=wipe" : ""}`, { method: "POST" }); } catch (e) {}
+  $("uninstall-choose").style.display = "none";
+  $("uninstall-done").style.display = "block";
+  $("uninstall-done-msg").textContent = wipe
+    ? "Agents removed and all recorded history erased."
+    : "Agents removed. Your recorded history is kept on disk.";
+  setStatus(false);
+}
+$("uninstall-keep").addEventListener("click", () => doUninstall(false));
+$("uninstall-wipe").addEventListener("click", () => doUninstall(true));
 
 refresh();
 setInterval(refresh, 30000);                                   // re-poll telemetry

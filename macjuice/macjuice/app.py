@@ -33,6 +33,21 @@ def _stop_agent(label: str) -> None:
     )
 
 
+def _remove_agent(label: str) -> None:
+    """Unload AND delete a launchd agent's plist (full uninstall, detached)."""
+    plist = os.path.expanduser(f"~/Library/LaunchAgents/{label}.plist")
+    subprocess.Popen(
+        ["/bin/sh", "-c",
+         f"sleep 1; launchctl unload '{plist}' 2>/dev/null; rm -f '{plist}'"]
+    )
+
+
+def _wipe_data() -> None:
+    """Delete the recorded data directory (detached, after agents stop)."""
+    data_dir = str(db_path().parent)
+    subprocess.Popen(["/bin/sh", "-c", f"sleep 2; rm -rf '{data_dir}'"])
+
+
 def _bucket_for(range_key: str) -> int:
     return {"24h": 120, "7d": 900, "30d": 3600, "all": 3600}.get(range_key, 3600)
 
@@ -117,6 +132,17 @@ def create_app() -> Flask:
         for label in labels:
             _stop_agent(label)
         return jsonify({"stopped": labels})
+
+    @app.route("/api/uninstall", methods=["POST"])
+    def uninstall():
+        wipe = request.args.get("data") == "wipe"
+        if wipe:
+            _wipe_data()
+        for label in (COLLECTOR_LABEL, DASHBOARD_LABEL):
+            _remove_agent(label)
+        return jsonify(
+            {"uninstalled": [COLLECTOR_LABEL, DASHBOARD_LABEL], "data_wiped": wipe}
+        )
 
     return app
 

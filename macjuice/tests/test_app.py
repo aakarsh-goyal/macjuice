@@ -80,3 +80,29 @@ def test_shutdown_unknown_target(tmp_path, monkeypatch):
     resp = c.post("/api/shutdown?target=bogus")
     assert resp.status_code == 400
     assert called == []
+
+
+def test_uninstall_keeps_data_by_default(tmp_path, monkeypatch):
+    removed, wiped = [], []
+    monkeypatch.setattr(appmod, "_remove_agent", lambda label: removed.append(label))
+    monkeypatch.setattr(appmod, "_wipe_data", lambda: wiped.append(True))
+    c = _client(tmp_path, monkeypatch)
+    resp = c.post("/api/uninstall")
+    data = json.loads(resp.data)
+    assert resp.status_code == 200
+    assert removed == ["com.macjuice.collector", "com.macjuice.dashboard"]
+    assert data["data_wiped"] is False
+    assert wiped == []
+
+
+def test_uninstall_with_data_wipe(tmp_path, monkeypatch):
+    removed, wiped = [], []
+    monkeypatch.setattr(appmod, "_remove_agent", lambda label: removed.append(label))
+    monkeypatch.setattr(appmod, "_wipe_data", lambda: wiped.append(True))
+    c = _client(tmp_path, monkeypatch)
+    resp = c.post("/api/uninstall?data=wipe")
+    data = json.loads(resp.data)
+    assert resp.status_code == 200
+    assert data["data_wiped"] is True
+    assert wiped == [True]
+    assert removed == ["com.macjuice.collector", "com.macjuice.dashboard"]
