@@ -54,25 +54,32 @@ def parse_ioreg(raw: bytes) -> dict:
 # parse_pmset_batt
 # ---------------------------------------------------------------------------
 
-# Time may be "H:MM" or the literal "(no estimate)" — make it optional.
-_BATT_LINE = re.compile(
-    r"-InternalBattery.*?(\d+)%;\s*([a-zA-Z ]+?);\s*(?:(\d+):(\d+)|\(no estimate\))"
-)
+_PCT = re.compile(r"(\d+)%")
+_TIME = re.compile(r"(\d+):(\d+)")
 
 
 def parse_pmset_batt(text: str) -> dict:
-    """Parse `pmset -g batt`. Internal battery only; UPS lines ignored."""
-    m = _BATT_LINE.search(text)
-    if not m:
+    """Parse `pmset -g batt`. Internal battery only; UPS lines ignored.
+
+    Robust to every state string macOS emits — with a time estimate
+    ("5%; discharging; 0:22 remaining"), without one ("80%; AC attached;
+    not charging"), "(no estimate)", "charged", "finishing charge", etc.
+    `charging` is 0 only when the battery is actively discharging (on battery);
+    any AC state (charging / charged / AC attached / not charging) is 1.
+    """
+    line = next((ln for ln in text.splitlines() if "InternalBattery" in ln), None)
+    if line is None:
         return {}
-    pct = int(m.group(1))
-    state = m.group(2).strip().lower()
-    if m.group(3) is not None:
-        total = int(m.group(3)) * 60 + int(m.group(4))
-    else:
-        total = 0
-    time_remaining = total if total > 0 else None
-    charging = 0 if state == "discharging" else 1
+    mpct = _PCT.search(line)
+    if not mpct:
+        return {}
+    pct = int(mpct.group(1))
+    charging = 0 if "discharging" in line.lower() else 1
+    time_remaining = None
+    mt = _TIME.search(line)
+    if mt:
+        total = int(mt.group(1)) * 60 + int(mt.group(2))
+        time_remaining = total if total > 0 else None
     return {
         "charge_pct": pct,
         "charging": charging,

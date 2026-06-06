@@ -107,3 +107,35 @@ def test_read_with_no_heavy_cache(monkeypatch):
     assert s["charge_pct"] == 42
     assert s["condition"] is None
     assert s["max_capacity_reported_pct"] is None
+
+
+def test_parse_pmset_batt_ac_attached_not_charging():
+    # real macOS format when plugged in but holding charge — no time field at all
+    text = (
+        "Now drawing from 'AC Power'\n"
+        " -InternalBattery-0 (id=22741091)\t80%; AC attached; not charging "
+        "present: true\n"
+    )
+    d = sampler.parse_pmset_batt(text)
+    assert d["charge_pct"] == 80
+    assert d["charging"] == 1            # on AC, not discharging
+    assert d["time_remaining_min"] is None
+
+
+def test_parse_pmset_batt_charging_with_time():
+    text = (
+        "Now drawing from 'AC Power'\n"
+        " -InternalBattery-0 (id=1)\t45%; charging; 1:30 remaining present: true\n"
+    )
+    d = sampler.parse_pmset_batt(text)
+    assert d["charge_pct"] == 45
+    assert d["charging"] == 1
+    assert d["time_remaining_min"] == 90
+
+
+def test_parse_pmset_batt_finishing_charge():
+    text = " -InternalBattery-0 (id=1)\t99%; finishing charge; 0:05 remaining present: true\n"
+    d = sampler.parse_pmset_batt(text)
+    assert d["charge_pct"] == 99
+    assert d["charging"] == 1
+    assert d["time_remaining_min"] == 5
