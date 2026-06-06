@@ -188,6 +188,62 @@
     /* staggered entrance */
     .reveal { opacity: 0; transform: translateY(14px); animation: rise .7s cubic-bezier(.22,1,.36,1) forwards; }
     @keyframes rise { to { opacity: 1; transform: none; } }
+
+    /* ---- manual drawer ---- */
+    .manual-btn {
+      font-family: "DM Mono", monospace; font-size: 12px; letter-spacing: .12em; cursor: pointer;
+      color: var(--accent); background: var(--panel); border: 1px solid var(--line-2);
+      padding: 7px 13px; border-radius: 999px; transition: all .2s ease;
+    }
+    .manual-btn:hover { background: var(--panel-2); box-shadow: 0 0 18px rgba(var(--glow), .25); }
+    .overlay {
+      position: fixed; inset: 0; z-index: 50; background: rgba(4,3,1,.62);
+      backdrop-filter: blur(3px); opacity: 0; pointer-events: none; transition: opacity .3s ease;
+    }
+    .overlay.show { opacity: 1; pointer-events: auto; }
+    .drawer {
+      position: fixed; top: 0; right: 0; bottom: 0; z-index: 51; width: min(580px, 94vw);
+      background: linear-gradient(180deg, var(--panel-2), var(--bg));
+      border-left: 1px solid var(--line-2); box-shadow: -40px 0 80px -30px #000;
+      transform: translateX(102%); transition: transform .42s cubic-bezier(.22,1,.36,1);
+      display: flex; flex-direction: column;
+    }
+    .drawer.show { transform: none; }
+    .drawer-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 22px 26px; border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(var(--glow),.06), transparent);
+    }
+    .drawer-head h2 { font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; font-size: 20px;
+      letter-spacing: -.02em; margin: 0; }
+    .drawer-head .x { cursor: pointer; color: var(--muted); background: none; border: 1px solid var(--line-2);
+      width: 32px; height: 32px; border-radius: 8px; font-size: 16px; transition: all .2s ease; }
+    .drawer-head .x:hover { color: var(--ink); border-color: var(--accent); }
+    .drawer-body { overflow-y: auto; padding: 8px 26px 40px; }
+    .drawer-body::-webkit-scrollbar { width: 10px; }
+    .drawer-body::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 8px; border: 3px solid var(--bg); }
+    .man-sec { padding: 22px 0; border-bottom: 1px dashed var(--line); }
+    .man-sec:last-child { border-bottom: 0; }
+    .man-sec h3 { font-family: "Bricolage Grotesque", sans-serif; font-weight: 700; font-size: 13px;
+      letter-spacing: .2em; text-transform: uppercase; color: var(--accent); margin: 0 0 12px; }
+    .man-sec p { color: var(--ink); font-size: 13.5px; line-height: 1.7; margin: 0 0 12px; }
+    .man-sec p.dim { color: var(--muted); font-size: 12.5px; }
+    .man-sec ul { margin: 0 0 12px; padding-left: 18px; }
+    .man-sec li { color: var(--ink); font-size: 13px; line-height: 1.75; margin-bottom: 6px; }
+    .man-sec li b { color: var(--accent); font-weight: 500; }
+    .step-label { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); margin: 14px 0 6px; }
+    .cmd {
+      display: flex; align-items: center; gap: 10px; background: #0a0805; border: 1px solid var(--line);
+      border-radius: 10px; padding: 11px 12px; margin: 6px 0;
+    }
+    .cmd code { flex: 1; font-family: "DM Mono", monospace; font-size: 12px; color: var(--teal);
+      white-space: pre-wrap; word-break: break-all; line-height: 1.5; }
+    .cmd .cp { flex: none; cursor: pointer; font-family: "DM Mono", monospace; font-size: 10.5px;
+      letter-spacing: .08em; color: var(--muted); background: var(--panel); border: 1px solid var(--line-2);
+      border-radius: 7px; padding: 6px 9px; transition: all .18s ease; }
+    .cmd .cp:hover { color: var(--accent); border-color: var(--accent); }
+    .cmd .cp.done { color: var(--teal); border-color: var(--teal); }
+    .warn { border-left: 2px solid var(--red); padding-left: 12px; color: var(--ink); font-size: 13px; line-height: 1.65; }
   </style>
 </head>
 <body>
@@ -204,6 +260,7 @@
       </div>
       <div class="meta-right">
         <span class="model" id="model">—</span>
+        <button class="manual-btn" id="manual-open">✦ MANUAL</button>
         <span class="pill" id="status"><span class="dot"></span><span id="status-txt">connecting…</span></span>
       </div>
     </div>
@@ -282,8 +339,101 @@
       </table>
     </div>
 
-    <footer>macjuice · built on ioreg · pmset · system_profiler — <a href="https://github.com/raghavtripped/macjuice">github.com/raghavtripped/macjuice</a></footer>
+    <footer>macjuice · built on ioreg · pmset · system_profiler — <a href="https://github.com/raghavtripped/macjuice">github.com/raghavtripped/macjuice</a> · <a href="#" id="manual-link">open manual</a></footer>
   </div>
+
+  <!-- ===== MANUAL DRAWER ===== -->
+  <div class="overlay" id="overlay"></div>
+  <aside class="drawer" id="drawer" aria-label="manual">
+    <div class="drawer-head">
+      <h2>⚡ macjuice manual</h2>
+      <button class="x" id="manual-close" title="close">✕</button>
+    </div>
+    <div class="drawer-body">
+
+      <div class="man-sec">
+        <h3>What it is</h3>
+        <p>A free, self-hosted battery monitor for your Mac. It shows everything coconutBattery and Battery&nbsp;Health charge money for — long-term history graphs, charge/discharge rates, runtime estimates, battery-health trend, per-session breakdowns — using only macOS's own built-in tools. No paid app, no cloud, no admin rights.</p>
+      </div>
+
+      <div class="man-sec">
+        <h3>How it works</h3>
+        <p>Two pieces share one small database:</p>
+        <ul>
+          <li><b>The collector</b> — a tiny background agent (macOS <i>launchd</i>) that wakes every <b>120&nbsp;seconds</b>, reads your battery via <code style="color:var(--teal)">ioreg</code> + <code style="color:var(--teal)">pmset</code> (and <code style="color:var(--teal)">system_profiler</code> once an hour), and appends one row to the database. It runs whether or not this page is open, and restarts at login.</li>
+          <li><b>This dashboard</b> — a read-only local web server that reads that database and draws what you see. It only needs to run when you want to look.</li>
+        </ul>
+        <p class="dim">It's gentle on battery: the cheap reads take ~30&nbsp;ms; the heavy hourly read is cached. It takes no power assertion, so it <b>never wakes your Mac from sleep</b> — you just won't get samples while it's asleep, which is fine.</p>
+      </div>
+
+      <div class="man-sec">
+        <h3>Reading the screen</h3>
+        <ul>
+          <li><b>Gauge</b> — current charge. Colour follows state: teal&nbsp;=&nbsp;charging, amber&nbsp;=&nbsp;discharging, red&nbsp;=&nbsp;critical.</li>
+          <li><b>Power draw</b> — live watts in/out (↓ draining, ↑ charging) plus the recent %/hour rate.</li>
+          <li><b>Two health numbers</b> — <i>mAh</i> is the raw max÷design capacity (can read &gt;100% on a fresh battery, like coconutBattery); <i>Apple</i> is the smoothed % macOS shows in Settings. They legitimately differ.</li>
+          <li><b>Est. full runtime</b> — how long a full 100% would last at the recent drain rate. "Short" reacts fast; "medium" is steadier.</li>
+          <li><b>Sessions</b> — each unplugged stretch from plug-out to plug-in, with how much you drained.</li>
+          <li><b>History</b> — pick 24H/7D/30D/ALL. Older points before install are coarse "backfill" estimated from system logs; detail sharpens after install.</li>
+        </ul>
+        <p class="dim">A blank value ("—") just means that reading isn't in yet — e.g. condition/Apple-health populate on the collector's first hourly cycle.</p>
+      </div>
+
+      <div class="man-sec">
+        <h3>Turn the dashboard off / on</h3>
+        <p class="dim">This only closes the viewer. The collector keeps logging in the background.</p>
+        <div class="step-label">stop the dashboard</div>
+        <div class="cmd"><code>pkill -f macjuice.app</code><button class="cp">copy</button></div>
+        <div class="step-label">start it again, then open localhost:5137</div>
+        <div class="cmd"><code>cd ~/Projects/macjuice && MACJUICE_DB="$HOME/Library/Application Support/macjuice/battery.db" PYTHONPATH=macjuice macjuice/.venv/bin/python -m macjuice.app</code><button class="cp">copy</button></div>
+      </div>
+
+      <div class="man-sec">
+        <h3>Pause / resume background logging</h3>
+        <div class="step-label">check it's running</div>
+        <div class="cmd"><code>launchctl list | grep macjuice</code><button class="cp">copy</button></div>
+        <div class="step-label">pause logging (temporary)</div>
+        <div class="cmd"><code>launchctl unload ~/Library/LaunchAgents/com.macjuice.collector.plist</code><button class="cp">copy</button></div>
+        <div class="step-label">resume logging</div>
+        <div class="cmd"><code>launchctl load ~/Library/LaunchAgents/com.macjuice.collector.plist</code><button class="cp">copy</button></div>
+      </div>
+
+      <div class="man-sec">
+        <h3>Uninstall</h3>
+        <p class="dim">Removes the background agent. Your recorded data is kept unless you delete it.</p>
+        <div class="step-label">remove the agent</div>
+        <div class="cmd"><code>cd ~/Projects/macjuice && ./uninstall.sh</code><button class="cp">copy</button></div>
+        <div class="step-label">also delete all recorded data (optional)</div>
+        <div class="cmd"><code>rm -rf "$HOME/Library/Application Support/macjuice"</code><button class="cp">copy</button></div>
+      </div>
+
+      <div class="man-sec">
+        <h3>Reinstall / update</h3>
+        <div class="step-label">reinstall (safe to re-run anytime)</div>
+        <div class="cmd"><code>cd ~/Projects/macjuice && ./install.sh</code><button class="cp">copy</button></div>
+        <div class="step-label">pull the latest version from GitHub</div>
+        <div class="cmd"><code>cd ~/Projects/macjuice && git pull && ./install.sh</code><button class="cp">copy</button></div>
+      </div>
+
+      <div class="man-sec">
+        <h3>Where things live</h3>
+        <ul>
+          <li><b>Code</b> — <code style="color:var(--teal)">~/Projects/macjuice</code></li>
+          <li><b>Database</b> — <code style="color:var(--teal)">~/Library/Application Support/macjuice/battery.db</code></li>
+          <li><b>Logs</b> — <code style="color:var(--teal)">~/Library/Logs/macjuice/</code></li>
+          <li><b>Agent</b> — <code style="color:var(--teal)">~/Library/LaunchAgents/com.macjuice.collector.plist</code></li>
+          <li><b>Repo</b> — <code style="color:var(--teal)">github.com/raghavtripped/macjuice</code></li>
+        </ul>
+      </div>
+
+      <div class="man-sec">
+        <h3>Troubleshooting</h3>
+        <p class="warn">Page won't load? The dashboard server isn't running — start it with the command under "Turn the dashboard off / on".</p>
+        <p class="dim" style="margin-top:12px">Charts look empty or flat? The collector needs a little runtime to gather live points — give it a few minutes, or check it's loaded with <code style="color:var(--teal)">launchctl list | grep macjuice</code>. The status pill (top-right) turns red when it can't reach the server.</p>
+      </div>
+
+    </div>
+  </aside>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -475,6 +625,24 @@ $("ranges").addEventListener("click", e => {
   [...$("ranges").children].forEach(x => x.classList.toggle("active", x === b));
   currentRange = b.dataset.r;
   loadHistory(currentRange);
+});
+
+// ---- manual drawer ----
+function openManual(e) { if (e) e.preventDefault(); $("overlay").classList.add("show"); $("drawer").classList.add("show"); }
+function closeManual() { $("overlay").classList.remove("show"); $("drawer").classList.remove("show"); }
+$("manual-open").addEventListener("click", openManual);
+$("manual-link").addEventListener("click", openManual);
+$("manual-close").addEventListener("click", closeManual);
+$("overlay").addEventListener("click", closeManual);
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeManual(); });
+document.querySelectorAll(".cmd .cp").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const code = btn.previousElementSibling.textContent;
+    navigator.clipboard.writeText(code).then(() => {
+      btn.textContent = "copied"; btn.classList.add("done");
+      setTimeout(() => { btn.textContent = "copy"; btn.classList.remove("done"); }, 1400);
+    });
+  });
 });
 
 refresh();
