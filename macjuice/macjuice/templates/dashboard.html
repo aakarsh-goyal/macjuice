@@ -2,95 +2,484 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>macjuice</title>
+  <title>macjuice · power telemetry</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <style>
-    body { font-family: -apple-system, system-ui, sans-serif; margin: 0;
-           background: #0b0d10; color: #e7eaee; }
-    header { padding: 16px 24px; font-size: 20px; font-weight: 600; }
-    .grid { display: grid; gap: 12px; padding: 0 24px 24px;
-            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
-    .card { background: #161a20; border: 1px solid #232a33; border-radius: 12px;
-            padding: 16px; }
-    .card .label { font-size: 12px; color: #8a93a0; text-transform: uppercase;
-                   letter-spacing: .04em; }
-    .card .value { font-size: 26px; font-weight: 700; margin-top: 6px; }
-    .charts { padding: 0 24px 40px; }
-    .chartbox { background: #161a20; border: 1px solid #232a33;
-                border-radius: 12px; padding: 16px; margin-bottom: 16px; }
-    .stamp { color: #8a93a0; font-size: 12px; padding: 0 24px 12px; }
+    :root {
+      --bg: #0c0a07;
+      --bg2: #14110b;
+      --panel: #17130c;
+      --panel-2: #1d180f;
+      --line: #2b2317;
+      --line-2: #3a2f1d;
+      --ink: #f3ead8;
+      --muted: #94886e;
+      --faint: #5f5642;
+      --amber: #ffb020;
+      --amber-hot: #ff8a1e;
+      --teal: #2fe6b0;
+      --red: #ff5a3c;
+      --accent: var(--amber);
+      --glow: 255, 176, 32;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "DM Mono", ui-monospace, monospace;
+      -webkit-font-smoothing: antialiased;
+      position: relative;
+      overflow-x: hidden;
+    }
+    /* atmosphere: radial glow + grid + grain */
+    body::before {
+      content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background:
+        radial-gradient(900px 600px at 78% -10%, rgba(var(--glow), .16), transparent 60%),
+        radial-gradient(700px 500px at 6% 4%, rgba(47, 230, 176, .05), transparent 55%),
+        linear-gradient(180deg, var(--bg2), var(--bg));
+    }
+    body::after {
+      content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: .035;
+      background-image:
+        linear-gradient(var(--ink) 1px, transparent 1px),
+        linear-gradient(90deg, var(--ink) 1px, transparent 1px);
+      background-size: 44px 44px;
+      mask-image: radial-gradient(circle at 50% 30%, #000 0%, transparent 75%);
+    }
+    .grain {
+      position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: .35;
+      mix-blend-mode: overlay;
+    }
+    .wrap { position: relative; z-index: 2; max-width: 1180px; margin: 0 auto; padding: 28px 28px 80px; }
+
+    /* ---- top bar ---- */
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .bolt {
+      width: 30px; height: 30px; display: grid; place-items: center;
+      border: 1px solid var(--line-2); border-radius: 9px;
+      background: linear-gradient(160deg, var(--panel-2), var(--panel));
+      box-shadow: 0 0 22px rgba(var(--glow), .18), inset 0 1px 0 rgba(255,255,255,.04);
+      color: var(--accent); font-size: 16px;
+    }
+    .brand h1 {
+      font-family: "Bricolage Grotesque", sans-serif; font-weight: 800;
+      font-size: 22px; letter-spacing: -.02em; margin: 0; line-height: 1;
+    }
+    .brand .sub { color: var(--faint); font-size: 11px; letter-spacing: .28em; text-transform: uppercase; margin-top: 4px; }
+    .meta-right { display: flex; align-items: center; gap: 10px; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 8px; font-size: 12px;
+      padding: 7px 12px; border: 1px solid var(--line-2); border-radius: 999px;
+      background: var(--panel); color: var(--muted);
+    }
+    .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+      box-shadow: 0 0 0 0 rgba(var(--glow), .6); animation: pulse 2.4s infinite; }
+    .pill.offline .dot { background: var(--red); animation: none; }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(var(--glow), .55);} 70%{ box-shadow: 0 0 0 7px rgba(var(--glow), 0);} 100%{ box-shadow:0 0 0 0 rgba(var(--glow),0);} }
+    .model { color: var(--faint); font-size: 12px; }
+
+    .rule { height: 1px; background: linear-gradient(90deg, transparent, var(--line-2), transparent); margin: 22px 0 26px; }
+
+    /* ---- hero ---- */
+    .hero { display: grid; grid-template-columns: 360px 1fr; gap: 26px; align-items: stretch; }
+    @media (max-width: 820px) { .hero { grid-template-columns: 1fr; } }
+
+    .gauge-card {
+      position: relative; border: 1px solid var(--line); border-radius: 20px; padding: 26px;
+      background:
+        radial-gradient(120% 90% at 50% 0%, rgba(var(--glow), .08), transparent 60%),
+        linear-gradient(165deg, var(--panel-2), var(--panel));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 24px 60px -30px #000;
+      display: flex; flex-direction: column; align-items: center;
+    }
+    .gauge-wrap { position: relative; width: 260px; height: 260px; }
+    .gauge-wrap svg { width: 100%; height: 100%; display: block; }
+    .gauge-track { fill: none; stroke: var(--line-2); stroke-width: 12; stroke-linecap: round; }
+    .gauge-val { fill: none; stroke: var(--accent); stroke-width: 12; stroke-linecap: round;
+      filter: drop-shadow(0 0 8px rgba(var(--glow), .5));
+      transition: stroke-dashoffset 1.1s cubic-bezier(.22,1,.36,1), stroke .5s ease; }
+    .gauge-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .gauge-pct { font-family: "Bricolage Grotesque", sans-serif; font-weight: 800;
+      font-size: 64px; line-height: .9; letter-spacing: -.04em; color: var(--ink); }
+    .gauge-pct sup { font-size: 22px; color: var(--accent); font-weight: 600; top: -1.4em; margin-left: 2px; }
+    .gauge-state { margin-top: 8px; font-size: 11px; letter-spacing: .32em; text-transform: uppercase; color: var(--accent); }
+    .gauge-foot { margin-top: 20px; width: 100%; display: flex; justify-content: space-between;
+      border-top: 1px dashed var(--line-2); padding-top: 16px; font-size: 12px; color: var(--muted); }
+    .gauge-foot b { color: var(--ink); font-weight: 500; }
+
+    .hero-side { display: grid; grid-template-rows: 1.2fr 1fr; gap: 22px; }
+    .power-card {
+      border: 1px solid var(--line); border-radius: 20px; padding: 26px 28px;
+      background: linear-gradient(150deg, var(--panel-2), var(--panel));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+      display: flex; flex-direction: column; justify-content: center; position: relative; overflow: hidden;
+    }
+    .power-card .tag { font-size: 11px; letter-spacing: .3em; text-transform: uppercase; color: var(--faint); }
+    .power-num { font-family: "Bricolage Grotesque", sans-serif; font-weight: 800; letter-spacing: -.03em;
+      font-size: 72px; line-height: .92; margin-top: 6px; display: flex; align-items: baseline; gap: 10px; }
+    .power-num .unit { font-family: "DM Mono", monospace; font-size: 20px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+    .power-num .arrow { font-size: 30px; color: var(--accent); }
+    .power-sub { margin-top: 10px; color: var(--muted); font-size: 13px; }
+    .spark { position: absolute; right: 0; bottom: 0; width: 55%; height: 64px; opacity: .5; }
+
+    .mini-row { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+    .mini {
+      border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px;
+      background: linear-gradient(150deg, var(--panel-2), var(--panel));
+    }
+    .mini .tag { font-size: 10.5px; letter-spacing: .26em; text-transform: uppercase; color: var(--faint); }
+    .mini .v { font-family: "Bricolage Grotesque", sans-serif; font-weight: 700; font-size: 30px; margin-top: 8px; letter-spacing: -.02em; }
+    .mini .v small { font-family: "DM Mono", monospace; font-size: 13px; color: var(--muted); font-weight: 400; }
+
+    /* ---- metric strip ---- */
+    .section-title { display: flex; align-items: center; gap: 12px; margin: 36px 0 16px; }
+    .section-title h2 { font-family: "Bricolage Grotesque", sans-serif; font-weight: 600; font-size: 13px;
+      letter-spacing: .26em; text-transform: uppercase; color: var(--muted); margin: 0; }
+    .section-title .ln { flex: 1; height: 1px; background: var(--line); }
+
+    .tiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; }
+    @media (max-width: 920px) { .tiles { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 520px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+    .tile {
+      border: 1px solid var(--line); border-radius: 14px; padding: 16px;
+      background: linear-gradient(160deg, var(--panel-2), var(--panel));
+      transition: transform .25s ease, border-color .25s ease;
+    }
+    .tile:hover { transform: translateY(-3px); border-color: var(--line-2); }
+    .tile .k { font-size: 10px; letter-spacing: .22em; text-transform: uppercase; color: var(--faint); }
+    .tile .val { font-family: "Bricolage Grotesque", sans-serif; font-weight: 700; font-size: 26px; margin-top: 10px; letter-spacing: -.02em; }
+    .tile .val small { font-family: "DM Mono", monospace; font-size: 12px; color: var(--muted); font-weight: 400; }
+
+    /* ---- charts ---- */
+    .chart-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 36px 0 16px; flex-wrap: wrap; }
+    .chart-head h2 { font-family: "Bricolage Grotesque", sans-serif; font-weight: 600; font-size: 13px;
+      letter-spacing: .26em; text-transform: uppercase; color: var(--muted); margin: 0; }
+    .ranges { display: inline-flex; border: 1px solid var(--line-2); border-radius: 999px; padding: 3px; background: var(--panel); }
+    .ranges button {
+      font-family: "DM Mono", monospace; font-size: 12px; color: var(--muted); background: none;
+      border: 0; padding: 6px 14px; border-radius: 999px; cursor: pointer; transition: all .2s ease; letter-spacing: .05em;
+    }
+    .ranges button.active { color: var(--bg); background: var(--accent); font-weight: 500; }
+    .panel { border: 1px solid var(--line); border-radius: 18px; padding: 18px 20px 8px;
+      background: linear-gradient(165deg, var(--panel-2), var(--panel)); }
+    .panel + .panel { margin-top: 18px; }
+    .panel canvas { max-height: 260px; }
+
+    /* ---- sessions ---- */
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th { text-align: left; color: var(--faint); font-weight: 400; font-size: 10.5px;
+      letter-spacing: .18em; text-transform: uppercase; padding: 0 14px 12px; }
+    tbody td { padding: 13px 14px; border-top: 1px solid var(--line); color: var(--ink); }
+    tbody tr:hover td { background: rgba(255,255,255,.015); }
+    tbody td .bar { height: 5px; border-radius: 3px; background: var(--line-2); position: relative; overflow: hidden; min-width: 60px; }
+    tbody td .bar i { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 3px; }
+    .empty { color: var(--faint); padding: 22px 14px; font-size: 13px; }
+
+    footer { margin-top: 40px; color: var(--faint); font-size: 11px; text-align: center; letter-spacing: .04em; }
+    footer a { color: var(--muted); text-decoration: none; border-bottom: 1px dotted var(--line-2); }
+
+    /* staggered entrance */
+    .reveal { opacity: 0; transform: translateY(14px); animation: rise .7s cubic-bezier(.22,1,.36,1) forwards; }
+    @keyframes rise { to { opacity: 1; transform: none; } }
   </style>
 </head>
 <body>
-  <header>macjuice — battery dashboard</header>
-  <div class="stamp" id="stamp">loading…</div>
-  <div class="grid" id="cards"></div>
-  <div class="charts">
-    <div class="chartbox"><canvas id="chargeChart"></canvas></div>
-    <div class="chartbox"><canvas id="wattsChart"></canvas></div>
+  <svg class="grain"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(#n)"/></svg>
+
+  <div class="wrap">
+    <div class="topbar reveal" style="animation-delay:.02s">
+      <div class="brand">
+        <div class="bolt">⚡</div>
+        <div>
+          <h1>macjuice</h1>
+          <div class="sub">power telemetry</div>
+        </div>
+      </div>
+      <div class="meta-right">
+        <span class="model" id="model">—</span>
+        <span class="pill" id="status"><span class="dot"></span><span id="status-txt">connecting…</span></span>
+      </div>
+    </div>
+
+    <div class="rule reveal" style="animation-delay:.05s"></div>
+
+    <!-- HERO -->
+    <div class="hero">
+      <div class="gauge-card reveal" style="animation-delay:.08s">
+        <div class="gauge-wrap">
+          <svg viewBox="0 0 220 220">
+            <circle class="gauge-track" cx="110" cy="110" r="92" transform="rotate(135 110 110)"></circle>
+            <circle class="gauge-val" id="gauge" cx="110" cy="110" r="92" transform="rotate(135 110 110)"></circle>
+          </svg>
+          <div class="gauge-center">
+            <div class="gauge-pct"><span id="gpct">--</span><sup>%</sup></div>
+            <div class="gauge-state" id="gstate">—</div>
+          </div>
+        </div>
+        <div class="gauge-foot">
+          <span>time left <b id="tleft">—</b></span>
+          <span>since full <b id="sincefull">—</b></span>
+        </div>
+      </div>
+
+      <div class="hero-side">
+        <div class="power-card reveal" style="animation-delay:.12s">
+          <span class="tag">power draw</span>
+          <div class="power-num"><span class="arrow" id="parrow">↓</span><span id="pwatts">--</span><span class="unit">watts</span></div>
+          <div class="power-sub" id="prate">—</div>
+          <svg class="spark" id="spark" viewBox="0 0 200 64" preserveAspectRatio="none"></svg>
+        </div>
+        <div class="mini-row">
+          <div class="mini reveal" style="animation-delay:.16s">
+            <div class="tag">est. full runtime</div>
+            <div class="v" id="estshort">—<small> short</small></div>
+          </div>
+          <div class="mini reveal" style="animation-delay:.2s">
+            <div class="tag">battery health</div>
+            <div class="v" id="healthbig">—<small> mAh</small></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- METRIC STRIP -->
+    <div class="section-title reveal" style="animation-delay:.22s"><h2>diagnostics</h2><div class="ln"></div></div>
+    <div class="tiles">
+      <div class="tile reveal" style="animation-delay:.24s"><div class="k">cycles</div><div class="val" id="t-cycles">—</div></div>
+      <div class="tile reveal" style="animation-delay:.26s"><div class="k">condition</div><div class="val" id="t-cond">—</div></div>
+      <div class="tile reveal" style="animation-delay:.28s"><div class="k">temperature</div><div class="val" id="t-temp">—</div></div>
+      <div class="tile reveal" style="animation-delay:.3s"><div class="k">voltage</div><div class="val" id="t-volt">—</div></div>
+      <div class="tile reveal" style="animation-delay:.32s"><div class="k">health · apple</div><div class="val" id="t-hrep">—</div></div>
+      <div class="tile reveal" style="animation-delay:.34s"><div class="k">est · medium</div><div class="val" id="t-estmed">—</div></div>
+    </div>
+
+    <!-- CHARTS -->
+    <div class="chart-head reveal" style="animation-delay:.36s">
+      <h2>history</h2>
+      <div class="ranges" id="ranges">
+        <button data-r="24h" class="active">24H</button>
+        <button data-r="7d">7D</button>
+        <button data-r="30d">30D</button>
+        <button data-r="all">ALL</button>
+      </div>
+    </div>
+    <div class="panel reveal" style="animation-delay:.38s"><canvas id="chargeChart"></canvas></div>
+    <div class="panel reveal" style="animation-delay:.4s"><canvas id="wattsChart"></canvas></div>
+
+    <!-- SESSIONS -->
+    <div class="section-title reveal" style="animation-delay:.42s"><h2>discharge sessions</h2><div class="ln"></div></div>
+    <div class="panel reveal" style="animation-delay:.44s; padding:18px 8px 8px">
+      <table>
+        <thead><tr><th>started</th><th>duration</th><th>used</th><th style="width:38%">drain</th></tr></thead>
+        <tbody id="sessions"><tr><td class="empty" colspan="4">loading…</td></tr></tbody>
+      </table>
+    </div>
+
+    <footer>macjuice · built on ioreg · pmset · system_profiler — <a href="https://github.com/raghavtripped/macjuice">github.com/raghavtripped/macjuice</a></footer>
   </div>
 
-  <script>
-    const fmt = (v, suf = "") => (v === null || v === undefined ? "—" : v + suf);
-    const card = (label, value) =>
-      `<div class="card"><div class="label">${label}</div>
-       <div class="value">${value}</div></div>`;
+<script>
+const $ = id => document.getElementById(id);
+const C = 2 * Math.PI * 92;          // gauge circumference
+const ARC = C * 0.75;                 // 270° visible sweep
+const dash = (v, suf = "") => (v === null || v === undefined || Number.isNaN(v)) ? "—" : v + suf;
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 
-    async function load() {
-      const [live, an, hist] = await Promise.all([
-        fetch("/api/live").then(r => r.json()),
-        fetch("/api/analytics").then(r => r.json()),
-        fetch("/api/history?range=24h").then(r => r.json()),
-      ]);
+let lastLive = null, currentRange = "24h", chargeChart, wattsChart;
 
-      document.getElementById("cards").innerHTML = [
-        card("Charge", fmt(live.charge_pct, "%")),
-        card("Health (mAh ratio)",
-             fmt(an.health_capacity_pct ? an.health_capacity_pct.toFixed(1) : null, "%")),
-        card("Health (Apple)", fmt(an.health_reported_pct, "%")),
-        card("Cycles", fmt(live.cycle_count)),
-        card("Condition", fmt(live.condition)),
-        card("Temp", fmt(live.temp_c ? live.temp_c.toFixed(1) : null, "°C")),
-        card("Power", fmt(live.watts ? Math.abs(live.watts).toFixed(1) : null, " W")),
-        card("Time left", fmt(live.time_remaining_min, " min")),
-        card("Est. full (short)",
-             fmt(an.estimated_full_runtime.short_term_min
-               ? Math.round(an.estimated_full_runtime.short_term_min) : null, " min")),
-        card("Est. full (medium)",
-             fmt(an.estimated_full_runtime.medium_term_min
-               ? Math.round(an.estimated_full_runtime.medium_term_min) : null, " min")),
-      ].join("");
+function stateFor(charging, pct) {
+  if (charging) return { word: "charging", color: css("--teal"), glow: "47, 230, 176" };
+  if (pct != null && pct <= 15) return { word: "critical", color: css("--red"), glow: "255, 90, 60" };
+  if (pct != null && pct <= 45) return { word: "discharging", color: css("--amber-hot"), glow: "255, 138, 30" };
+  return { word: "discharging", color: css("--amber"), glow: "255, 176, 32" };
+}
+function fmtMin(m) {
+  if (m == null) return "—";
+  m = Math.round(m);
+  if (m < 60) return m + "m";
+  const h = Math.floor(m / 60), r = m % 60;
+  return r ? `${h}h ${r}m` : `${h}h`;
+}
+function ago(ts) {
+  if (!ts) return "—";
+  const s = Math.max(0, Math.floor(Date.now()/1000 - ts));
+  if (s < 60) return s + "s ago";
+  if (s < 3600) return Math.floor(s/60) + "m ago";
+  return Math.floor(s/3600) + "h ago";
+}
 
-      const pts = hist.points;
-      pts.push({ ts: live.sampled_at, charge_pct: live.charge_pct,
-                 watts: live.watts });
-      const labels = pts.map(p => new Date(p.ts * 1000).toLocaleTimeString());
+// gauge: dash = full arc, animate offset from ARC (empty) to ARC*(1-frac)
+$("gauge").style.strokeDasharray = `${ARC} ${C}`;
+$("gauge").style.strokeDashoffset = ARC;
 
-      const ageMin = Math.round((Date.now() / 1000 - (live.ts || live.sampled_at)) / 60);
-      document.getElementById("stamp").textContent =
-        `last sampled ${ageMin} min ago`;
+function setGauge(pct, st) {
+  const frac = Math.max(0, Math.min(1, (pct ?? 0) / 100));
+  document.documentElement.style.setProperty("--accent", st.color);
+  document.documentElement.style.setProperty("--glow", st.glow);
+  $("gauge").style.stroke = st.color;
+  requestAnimationFrame(() => { $("gauge").style.strokeDashoffset = ARC * (1 - frac); });
+}
 
-      new Chart(document.getElementById("chargeChart"), {
-        type: "line",
-        data: { labels, datasets: [{ label: "Charge %",
-                 data: pts.map(p => p.charge_pct), borderColor: "#4caf78",
-                 tension: .25, pointRadius: 0 }] },
-        options: { plugins: { legend: { labels: { color: "#e7eaee" } } },
-                   scales: { x: { ticks: { color: "#8a93a0" } },
-                             y: { ticks: { color: "#8a93a0" } } } },
-      });
-      new Chart(document.getElementById("wattsChart"), {
-        type: "line",
-        data: { labels, datasets: [{ label: "Watts",
-                 data: pts.map(p => p.watts), borderColor: "#5b9bd5",
-                 tension: .25, pointRadius: 0 }] },
-        options: { plugins: { legend: { labels: { color: "#e7eaee" } } },
-                   scales: { x: { ticks: { color: "#8a93a0" } },
-                             y: { ticks: { color: "#8a93a0" } } } },
-      });
-    }
-    load();
-  </script>
+let countRaf;
+function countTo(el, target, suffix = "") {
+  if (target == null) { el.textContent = "--"; return; }
+  cancelAnimationFrame(countRaf);
+  const start = parseFloat(el.dataset.cur || "0"), t0 = performance.now(), dur = 800;
+  const step = now => {
+    const k = Math.min(1, (now - t0) / dur);
+    const ease = 1 - Math.pow(1 - k, 3);
+    const v = Math.round(start + (target - start) * ease);
+    el.textContent = v + suffix; el.dataset.cur = v;
+    if (k < 1) countRaf = requestAnimationFrame(step);
+  };
+  countRaf = requestAnimationFrame(step);
+}
+
+function renderLive(live, an) {
+  lastLive = live;
+  $("model").textContent = live.model || "Mac";
+  const st = stateFor(live.charging, live.charge_pct);
+
+  setGauge(live.charge_pct, st);
+  countTo($("gpct"), live.charge_pct);
+  $("gstate").textContent = live.charging && live.charge_pct >= 99 ? "full" : st.word;
+  $("tleft").textContent = live.charging ? "on AC" : fmtMin(live.time_remaining_min);
+  $("sincefull").textContent = an.runtime_since_full_charge
+    ? fmtMin(an.runtime_since_full_charge.elapsed_min) : "—";
+
+  // power
+  const w = live.watts == null ? null : Math.abs(live.watts);
+  $("pwatts").textContent = w == null ? "--" : w.toFixed(1);
+  $("parrow").textContent = live.charging ? "↑" : "↓";
+  const dr = an.discharge_rate || {};
+  $("prate").textContent = dr.pct_per_hour != null
+    ? `${dr.pct_per_hour.toFixed(1)}%/hr · avg ${dr.avg_watts ? dr.avg_watts.toFixed(1) : "—"} W`
+    : (live.charging ? "charging from adapter" : "measuring…");
+
+  // mini
+  const est = an.estimated_full_runtime || {};
+  $("estshort").innerHTML = `${est.short_term_min != null ? fmtMin(est.short_term_min) : "—"}<small> short</small>`;
+  $("t-estmed").innerHTML = est.medium_term_min != null ? fmtMin(est.medium_term_min) : "—";
+  $("healthbig").innerHTML = `${an.health_capacity_pct != null ? an.health_capacity_pct.toFixed(1) + "%" : "—"}<small> mAh</small>`;
+
+  // tiles
+  $("t-cycles").textContent = dash(live.cycle_count);
+  $("t-cond").textContent = dash(live.condition);
+  $("t-temp").innerHTML = live.temp_c != null ? `${live.temp_c.toFixed(1)}<small>°C</small>` : "—";
+  $("t-volt").innerHTML = live.voltage_v != null ? `${live.voltage_v.toFixed(2)}<small>V</small>` : "—";
+  $("t-hrep").innerHTML = an.health_reported_pct != null ? `${an.health_reported_pct}<small>%</small>` : "—";
+
+  setStatus(true, live);
+}
+
+function setStatus(ok, live) {
+  const p = $("status"), t = $("status-txt");
+  if (!ok) { p.classList.add("offline"); t.textContent = "offline"; return; }
+  p.classList.remove("offline");
+  t.textContent = "live · sampled " + ago(live.ts || live.sampled_at);
+}
+
+const chartBase = (accent) => ({
+  responsive: true, maintainAspectRatio: false, animation: { duration: 700 },
+  interaction: { intersect: false, mode: "index" },
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      backgroundColor: "#0c0a07", borderColor: css("--line-2"), borderWidth: 1,
+      titleColor: css("--muted"), bodyColor: css("--ink"), padding: 10,
+      titleFont: { family: "DM Mono" }, bodyFont: { family: "DM Mono" },
+    },
+  },
+  scales: {
+    x: { grid: { color: "rgba(255,255,255,.04)" }, ticks: { color: css("--faint"),
+         font: { family: "DM Mono", size: 10 }, maxTicksLimit: 7, maxRotation: 0 } },
+    y: { grid: { color: "rgba(255,255,255,.04)" }, ticks: { color: css("--faint"),
+         font: { family: "DM Mono", size: 10 } } },
+  },
+});
+
+function gradient(ctx, color) {
+  const g = ctx.createLinearGradient(0, 0, 0, 240);
+  g.addColorStop(0, color + "55"); g.addColorStop(1, color + "00");
+  return g;
+}
+
+async function loadHistory(range) {
+  const hist = await fetch(`/api/history?range=${range}`).then(r => r.json());
+  const pts = hist.points.slice();
+  if (lastLive) pts.push({ ts: lastLive.sampled_at, charge_pct: lastLive.charge_pct, watts: lastLive.watts });
+  const labels = pts.map(p => {
+    const d = new Date(p.ts * 1000);
+    return range === "24h"
+      ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      : d.toLocaleDateString([], { month: "short", day: "numeric" });
+  });
+  const amber = css("--amber"), teal = css("--teal");
+  const cctx = $("chargeChart").getContext("2d");
+  const wctx = $("wattsChart").getContext("2d");
+
+  const chargeData = { labels, datasets: [{ label: "charge %", data: pts.map(p => p.charge_pct),
+    borderColor: amber, backgroundColor: gradient(cctx, amber), fill: true,
+    borderWidth: 2, tension: .35, pointRadius: 0 }] };
+  const wattsData = { labels, datasets: [{ label: "watts", data: pts.map(p => p.watts == null ? null : Math.abs(p.watts)),
+    borderColor: teal, backgroundColor: gradient(wctx, teal), fill: true,
+    borderWidth: 2, tension: .35, pointRadius: 0 }] };
+
+  if (chargeChart) { chargeChart.data = chargeData; chargeChart.update(); }
+  else chargeChart = new Chart(cctx, { type: "line", data: chargeData,
+    options: { ...chartBase(amber), scales: { ...chartBase(amber).scales,
+      y: { ...chartBase(amber).scales.y, min: 0, max: 100, ticks: { ...chartBase(amber).scales.y.ticks, callback: v => v + "%" } } } } });
+
+  if (wattsChart) { wattsChart.data = wattsData; wattsChart.update(); }
+  else wattsChart = new Chart(wctx, { type: "line", data: wattsData,
+    options: { ...chartBase(teal), scales: { ...chartBase(teal).scales,
+      y: { ...chartBase(teal).scales.y, ticks: { ...chartBase(teal).scales.y.ticks, callback: v => v + "W" } } } } });
+}
+
+async function loadSessions() {
+  const s = await fetch("/api/sessions").then(r => r.json());
+  const tb = $("sessions");
+  if (!s.length) { tb.innerHTML = `<tr><td class="empty" colspan="4">No completed discharge sessions yet — they appear after you unplug and run on battery.</td></tr>`; return; }
+  const maxUsed = Math.max(...s.map(x => x.pct_used || 0), 1);
+  tb.innerHTML = s.slice().reverse().slice(0, 12).map(x => {
+    const d = new Date(x.start_ts * 1000);
+    const when = d.toLocaleDateString([], { month: "short", day: "numeric" }) + " " +
+                 d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const pct = Math.max(0, x.pct_used || 0);
+    return `<tr><td>${when}</td><td>${fmtMin(x.duration_min)}</td><td>${pct.toFixed(0)}%</td>
+      <td><div class="bar"><i style="width:${(pct/maxUsed*100).toFixed(0)}%"></i></div></td></tr>`;
+  }).join("");
+}
+
+async function refresh() {
+  try {
+    const [live, an] = await Promise.all([
+      fetch("/api/live").then(r => r.json()),
+      fetch("/api/analytics").then(r => r.json()),
+    ]);
+    renderLive(live, an);
+    await loadHistory(currentRange);
+    await loadSessions();
+  } catch (e) { setStatus(false); }
+}
+
+$("ranges").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  [...$("ranges").children].forEach(x => x.classList.toggle("active", x === b));
+  currentRange = b.dataset.r;
+  loadHistory(currentRange);
+});
+
+refresh();
+setInterval(refresh, 30000);                                   // re-poll telemetry
+setInterval(() => { if (lastLive) setStatus(true, lastLive); }, 1000); // tick "sampled ago"
+</script>
 </body>
 </html>
