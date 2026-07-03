@@ -8,6 +8,33 @@ The paid apps are mostly GUIs over those free tools; their "pro" features are
 just the free data **recorded over time**. macjuice does the recording — and
 shows it on a retro-futuristic power console.
 
+## Native menu bar app (current)
+
+`MacJuiceApp/` is a native Swift rewrite that replaces **both** launchd agents
+with a single menu bar app — no Python, no Flask, no subprocesses. It reads the
+battery straight from IOKit (microseconds per sample), writes to the **same
+`battery.db`** so history carries over, and draws a SwiftUI popover with live
+stats, dual health numbers, history charts (24H/7D/30D/ALL with plug/unplug
+markers and hover scrubbing), discharge sessions, and runtime estimates.
+
+```sh
+cd MacJuiceApp && ./Scripts/build.sh --install   # builds, installs to /Applications, launches
+```
+
+- Menu bar shows a bolt + live system draw (configurable: icon only / % / watts).
+- Starts at login automatically (ServiceManagement; toggle in the gear menu).
+- Sampling every ~120s via a system-coalesced background activity; plug/unplug
+  events are captured instantly with exact timestamps. No power assertions —
+  never wakes the Mac.
+- Extras the Python collector couldn't get on Apple Silicon: true system power
+  draw (`system_watts`, even on AC when the battery is bypassed), battery
+  temperature, raw capacity mAh, and adapter details.
+- Footprint: ~1.5 MB app, ~20 MB RSS, ~0.0% CPU.
+- Diagnostics: `MacJuice --sample` (one JSON snapshot), `--login-status`.
+
+The Python agents below still work but are superseded; `./uninstall.sh`
+removes them (data is kept).
+
 ![dashboard](https://github.com/raghavtripped/macjuice) <!-- open http://127.0.0.1:5137 after install -->
 
 ## Features

@@ -4,3 +4,12 @@ battery.db
 .venv/
 venv/
 macjuice/.venv/
+
+# macOS
+.DS_Store
+
+# Swift app build artifacts
+MacJuiceApp/.build/
+MacJuiceApp/dist/
+MacJuiceApp/.swiftpm/
+MacJuiceApp/Support/AppIcon.iconset/
