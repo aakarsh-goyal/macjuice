@@ -22,6 +22,16 @@ final class Settings: ObservableObject {
         didSet { UserDefaults.standard.set(labelStyle.rawValue, forKey: "labelStyle") }
     }
 
+    @Published var notifyLowBattery: Bool {
+        didSet { UserDefaults.standard.set(notifyLowBattery, forKey: "notifyLowBattery") }
+    }
+    @Published var notifyFullyCharged: Bool {
+        didSet { UserDefaults.standard.set(notifyFullyCharged, forKey: "notifyFullyCharged") }
+    }
+    @Published var notifyHighTemp: Bool {
+        didSet { UserDefaults.standard.set(notifyHighTemp, forKey: "notifyHighTemp") }
+    }
+
     @Published var launchAtLogin: Bool {
         didSet {
             guard launchAtLogin != (SMAppService.mainApp.status == .enabled) else { return }
@@ -42,6 +52,13 @@ final class Settings: ObservableObject {
         labelStyle = UserDefaults.standard.string(forKey: "labelStyle")
             .flatMap(LabelStyle.init(rawValue:)) ?? .watts
         launchAtLogin = SMAppService.mainApp.status == .enabled
+        func flag(_ key: String) -> Bool {
+            UserDefaults.standard.object(forKey: key) == nil
+                ? true : UserDefaults.standard.bool(forKey: key)
+        }
+        notifyLowBattery = flag("notifyLowBattery")
+        notifyFullyCharged = flag("notifyFullyCharged")
+        notifyHighTemp = flag("notifyHighTemp")
     }
 
     /// Register once on first launch from a stable location, honoring any

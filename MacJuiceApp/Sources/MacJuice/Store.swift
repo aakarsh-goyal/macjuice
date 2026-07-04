@@ -8,6 +8,7 @@ struct HistoryPoint {
     let chargePct: Double?
     let watts: Double?
     let systemWatts: Double?
+    let healthPct: Double?
 }
 
 struct SampleRow {
@@ -71,7 +72,7 @@ final class Store: @unchecked Sendable {
 
     // MARK: - Writes
 
-    func insert(_ s: BatterySnapshot, model: String?) {
+    func insert(_ s: BatterySnapshot, model: String?, source: String = "live") {
         queue.sync {
             let sql = """
                 INSERT OR IGNORE INTO samples
@@ -82,7 +83,7 @@ final class Store: @unchecked Sendable {
                 """
             withStatement(sql) { st in
                 bind(st, 1, s.ts)
-                bind(st, 2, "live")
+                bind(st, 2, source)
                 bind(st, 3, s.chargePct)
                 bind(st, 4, s.currentMAh)
                 bind(st, 5, s.maxMAh)
@@ -137,7 +138,8 @@ final class Store: @unchecked Sendable {
             var out: [HistoryPoint] = []
             // The 0–100 clamp guards against historic backfill parser junk.
             let sql = """
-                SELECT (ts/?1)*?1 AS t, AVG(charge_pct), AVG(watts), AVG(system_watts)
+                SELECT (ts/?1)*?1 AS t, AVG(charge_pct), AVG(watts), AVG(system_watts),
+                       AVG(CASE WHEN design_mah > 0 THEN max_mah * 100.0 / design_mah END)
                 FROM samples WHERE ts >= ?2 AND charge_pct BETWEEN 0 AND 100
                 GROUP BY t ORDER BY t
                 """
@@ -148,7 +150,8 @@ final class Store: @unchecked Sendable {
                     out.append(HistoryPoint(ts: colInt(st, 0) ?? 0,
                                             chargePct: colDouble(st, 1),
                                             watts: colDouble(st, 2),
-                                            systemWatts: colDouble(st, 3)))
+                                            systemWatts: colDouble(st, 3),
+                                            healthPct: colDouble(st, 4)))
                 }
             }
             return out
@@ -226,6 +229,48 @@ final class Store: @unchecked Sendable {
             }
             guard let f = endpoint("ASC"), let l = endpoint("DESC"), l.0 > f.0 else { return nil }
             return (f, l)
+        }
+    }
+
+    /// Full samples table as CSV. Returns the row count written.
+    func exportCSV(to url: URL) throws -> Int {
+        try queue.sync {
+            let cols = ["ts", "iso_local", "source", "charge_pct", "current_mah", "max_mah",
+                        "design_mah", "cycle_count", "max_capacity_reported_pct", "condition",
+                        "temp_c", "voltage_v", "amperage_ma", "watts", "system_watts",
+                        "charging", "adapter_watts", "time_remaining_min"]
+            var csv = cols.joined(separator: ",") + "\n"
+            var count = 0
+            let iso = DateFormatter()
+            iso.dateFormat = "yyyy-MM-dd HH:mm:ss"
+            let sql = """
+                SELECT ts, source, charge_pct, current_mah, max_mah, design_mah, cycle_count,
+                       max_capacity_reported_pct, condition, temp_c, voltage_v, amperage_ma,
+                       watts, system_watts, charging, adapter_watts, time_remaining_min
+                FROM samples ORDER BY ts
+                """
+            withStatement(sql) { st in
+                while sqlite3_step(st) == SQLITE_ROW {
+                    let ts = colInt(st, 0) ?? 0
+                    var fields: [String] = [
+                        String(ts),
+                        iso.string(from: Date(timeIntervalSince1970: TimeInterval(ts))),
+                    ]
+                    for i in 1..<17 {
+                        switch sqlite3_column_type(st, Int32(i)) {
+                        case SQLITE_NULL: fields.append("")
+                        case SQLITE_TEXT: fields.append(colText(st, Int32(i)) ?? "")
+                        default:
+                            let v = sqlite3_column_double(st, Int32(i))
+                            fields.append(v == v.rounded() ? String(Int(v)) : String(v))
+                        }
+                    }
+                    csv += fields.joined(separator: ",") + "\n"
+                    count += 1
+                }
+            }
+            try csv.write(to: url, atomically: true, encoding: .utf8)
+            return count
         }
     }
 

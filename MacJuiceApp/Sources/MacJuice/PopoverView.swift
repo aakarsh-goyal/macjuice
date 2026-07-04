@@ -282,6 +282,7 @@ private struct InsightsList: View {
 
 private struct FooterBar: View {
     @EnvironmentObject var settings: Settings
+    @EnvironmentObject var model: BatteryModel
     let condition: String
 
     var body: some View {
@@ -301,12 +302,34 @@ private struct FooterBar: View {
                 .padding(.vertical, 2)
                 .background(Theme.warn.opacity(0.14), in: Capsule())
             }
+            if model.hiResUntil != nil {
+                HStack(spacing: 3) {
+                    Image(systemName: "waveform.path.ecg")
+                        .font(.system(size: 8.5))
+                    Text("HI-RES")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .foregroundStyle(Theme.power)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(Theme.power.opacity(0.13), in: Capsule())
+            }
             Spacer()
             Menu {
                 Toggle("Launch at Login", isOn: $settings.launchAtLogin)
                 Picker("Menu Bar Shows", selection: $settings.labelStyle) {
                     ForEach(LabelStyle.allCases) { Text($0.title).tag($0) }
                 }
+                Menu("Alerts") {
+                    Toggle("Low Battery (20% / 10%)", isOn: $settings.notifyLowBattery)
+                    Toggle("Fully Charged", isOn: $settings.notifyFullyCharged)
+                    Toggle("High Temperature", isOn: $settings.notifyHighTemp)
+                }
+                Divider()
+                Button(hiResTitle) { model.toggleHiRes() }
+                Divider()
+                Button("Copy Stats") { copyStats() }
+                Button("Export History as CSV…") { exportCSV() }
                 Divider()
                 Button("Quit MacJuice") { NSApp.terminate(nil) }
                     .keyboardShortcut("q")
@@ -318,6 +341,80 @@ private struct FooterBar: View {
             .menuIndicator(.hidden)
             .buttonStyle(.borderless)
             .fixedSize()
+        }
+    }
+
+    private var hiResTitle: String {
+        if let until = model.hiResUntil {
+            let mins = max(Int(until.timeIntervalSinceNow / 60), 0)
+            return "Stop High-Res Logging (\(mins) min left)"
+        }
+        return "Log Every 10 s for 1 Hour"
+    }
+
+    private func copyStats() {
+        guard let s = model.live else { return }
+        let d = model.derived
+        var lines: [String] = []
+        lines.append("MacJuice — \(Date().formatted(date: .abbreviated, time: .shortened))")
+
+        var charge = "Charge: " + (s.chargePct.map { "\(Int($0.rounded()))%" } ?? "—")
+        if let cur = s.currentMAh, let max = s.maxMAh {
+            charge += " (\(Fmt.mAh(cur)) of \(Fmt.mAh(max)))"
+        }
+        charge += s.onAC ? " — on AC" : " — on battery"
+        if let t = s.timeRemainingMin {
+            charge += s.onAC ? " · \(Fmt.hm(Double(t))) to full" : " · \(Fmt.hm(Double(t))) left"
+        }
+        lines.append(charge)
+
+        if let w = s.systemWatts ?? s.watts.map({ abs($0) }) {
+            var power = "Draw: \(Fmt.watts(w)) system"
+            if let b = s.watts { power += String(format: " · battery %+.1f W", b) }
+            lines.append(power)
+        }
+        var health = "Health: "
+        health += s.healthReportedPct.map { Fmt.pct($0) } ?? "—"
+        if let raw = s.healthRawPct { health += " reported · \(Fmt.pct(raw, decimals: 1)) raw" }
+        if let c = s.cycleCount {
+            health += " · \(c) cycles" + (s.designCycles.map { " (of \($0))" } ?? "")
+        }
+        lines.append(health)
+
+        var env: [String] = []
+        if let t = s.tempC { env.append(String(format: "Temperature: %.1f °C", t)) }
+        if let v = s.voltageV { env.append(String(format: "Voltage: %.2f V", v)) }
+        env.append("Condition: \(s.condition)")
+        if let serial = s.serial { env.append("Serial: \(serial)") }
+        lines.append(env.joined(separator: " · "))
+
+        if let session = d.currentSession {
+            var line = "Session: on battery \(Fmt.hm(Double(session.durationS) / 60)) · −\(Fmt.pct(max(session.pctUsed, 0)))"
+            if let r = session.pctPerHour { line += String(format: " · %.1f%%/h", r) }
+            lines.append(line)
+        }
+        if let est = d.estFullRuntimeMin {
+            lines.append("Full-charge runtime estimate: ≈ \(Fmt.hm(est))")
+        }
+
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
+    }
+
+    private func exportCSV() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "macjuice-history.csv"
+        panel.canCreateDirectories = true
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let store = model.store
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let rows = try store.exportCSV(to: url)
+                NSLog("MacJuice: exported \(rows) samples to \(url.path)")
+            } catch {
+                NSLog("MacJuice: CSV export failed: \(error.localizedDescription)")
+            }
         }
     }
 }

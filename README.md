@@ -37,11 +37,23 @@ percentage / watts):
 - Live tiles: system draw, adapter (rated + actual input watts), temperature,
   **two health numbers** (Apple's smoothed % *and* the raw mAh ratio, which can
   read >100% on a fresh battery), cycle count, current/full charge in mAh
-- History charts — charge % or battery watts over **24H / 7D / 30D / ALL**,
-  with plug/unplug markers and hover scrubbing
+- History charts — charge %, battery watts, or **battery health** over
+  **24H / 7D / 30D / ALL**, with plug/unplug markers and hover scrubbing
 - Discharge sessions ("On battery 2:04 · −11% · 5.3%/h"), time since full
   charge, and estimated full-charge runtime from your actual recent use
 - Long-term capacity trend (mAh/month) once two weeks of data accumulate
+
+**Alerts** (native notifications, each toggleable in the gear menu):
+
+- Low battery at 20% and 10%, with the time remaining
+- Fully charged — an unplug reminder
+- Battery hot — sustained >40 °C
+
+**In the gear menu** — launch at login, menu bar label style, alert toggles,
+**Copy Stats** (plaintext summary to the clipboard), **Export History as
+CSV**, and **high-resolution logging**: one sample every 10 s for the next
+hour (stop it early from the same menu) when you want benchmark-grade data
+for a specific workload.
 
 ## Built to sip power
 
@@ -54,6 +66,7 @@ and nothing polls faster than it has to:
 | Menu bar number | pushed by macOS power events (every % step, plug/unplug), plus a coalesced 30 s refresh while showing watts — paused when the display sleeps |
 | History sample → SQLite | every ~120 s via a system-coalesced background activity, **plus instantly** on plug/unplug/full-charge so events carry exact timestamps |
 | Popover while open | every 2 s |
+| High-res logging (opt-in) | every 10 s, auto-stops after 1 hour |
 | Popover closed | nothing |
 
 No power assertions — the Mac sleeps exactly as it would without MacJuice.
@@ -76,8 +89,9 @@ cd macjuice/MacJuiceApp
 ```
 
 First launch registers **Launch at Login** (toggle it in the gear menu, along
-with the menu bar label style). If a database from a previous MacJuice install
-exists, recording continues right where it left off.
+with the menu bar label style) and asks once for notification permission (for
+the battery alerts). If a database from a previous MacJuice install exists,
+recording continues right where it left off.
 
 ## Your data
 

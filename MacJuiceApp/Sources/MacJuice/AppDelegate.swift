@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UserNotifications
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -30,6 +31,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model = BatteryModel(store: store)
         recorder = Recorder(store: store, model: model)
         statusController = StatusItemController(model: model, settings: .shared)
+        if Bundle.main.bundleIdentifier != nil {
+            UNUserNotificationCenter.current().delegate = self
+        }
         recorder.start()
         Settings.shared.autoRegisterLoginItemIfNeeded()
     }
@@ -79,5 +83,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             window.orderOut(nil)
         }
+    }
+}
+
+extension AppDelegate: UNUserNotificationCenterDelegate {
+    // Show banners even when the app is technically frontmost (popover open).
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound])
     }
 }

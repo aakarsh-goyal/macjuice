@@ -13,12 +13,17 @@ struct HistoryChart: View {
     @EnvironmentObject private var model: BatteryModel
     private var hovered: HistoryPoint? { model.chartHover }
 
-    private var accent: Color { metric == .charge ? Theme.charge : Theme.power }
+    private var accent: Color {
+        switch metric {
+        case .charge: Theme.charge
+        case .power: Theme.power
+        case .health: Theme.health
+        }
+    }
 
     private var usable: [(date: Date, value: Double)] {
         points.compactMap { p in
-            let v = metric == .charge ? p.chargePct : p.watts
-            guard let v else { return nil }
+            guard let v = value(of: p) else { return nil }
             return (Date(timeIntervalSince1970: TimeInterval(p.ts)), v)
         }
     }
@@ -183,7 +188,9 @@ struct HistoryChart: View {
         return ticks
     }
 
-    private var areaBase: Double { 0 }
+    private var areaBase: Double {
+        metric == .health ? yDomain.lowerBound : 0
+    }
 
     /// Breathing room after the newest point so the end-dot isn't clipped
     /// by the plot edge.
@@ -195,18 +202,33 @@ struct HistoryChart: View {
     }
 
     private var yDomain: ClosedRange<Double> {
-        if metric == .charge { return 0...100 }
-        let vals = usable.map(\.value)
-        let lo = min(vals.min() ?? 0, 0), hi = max(vals.max() ?? 1, 1)
-        let pad = (hi - lo) * 0.12
-        return (lo - pad)...(hi + pad)
+        switch metric {
+        case .charge:
+            return 0...100
+        case .power:
+            let vals = usable.map(\.value)
+            let lo = min(vals.min() ?? 0, 0), hi = max(vals.max() ?? 1, 1)
+            let pad = (hi - lo) * 0.12
+            return (lo - pad)...(hi + pad)
+        case .health:
+            // Zoomed band — on a 0–100 axis a healthy battery is a flat line.
+            let vals = usable.map(\.value)
+            var lo = (vals.min() ?? 99) - 0.5, hi = (vals.max() ?? 101) + 0.5
+            if hi - lo < 2 {
+                let mid = (hi + lo) / 2
+                lo = mid - 1
+                hi = mid + 1
+            }
+            return lo...hi
+        }
     }
 
     private func yLabel(_ v: Double, precise: Bool = false) -> String {
-        if metric == .charge {
-            return precise ? Fmt.pct(v) : "\(Int(v))"
+        switch metric {
+        case .charge: precise ? Fmt.pct(v) : "\(Int(v))"
+        case .power: precise ? Fmt.watts(v) : String(format: "%.0f", v)
+        case .health: precise ? Fmt.pct(v, decimals: 1) : String(format: "%.1f", v)
         }
-        return precise ? Fmt.watts(v) : String(format: "%.0f", v)
     }
 
     private var xFormat: Date.FormatStyle {
@@ -227,7 +249,11 @@ struct HistoryChart: View {
     }
 
     private func value(of p: HistoryPoint) -> Double? {
-        metric == .charge ? p.chargePct : p.watts
+        switch metric {
+        case .charge: p.chargePct
+        case .power: p.watts
+        case .health: p.healthPct
+        }
     }
 
     private func nearest(to date: Date) -> HistoryPoint? {

@@ -15,8 +15,10 @@ final class Recorder {
 
     private let store: Store
     private let model: BatteryModel
+    private let alerts = AlertEngine()
     private var scheduler: NSBackgroundActivityScheduler?
     private var powerSource: CFRunLoopSource?
+    private var hiResTimer: Timer?
     private var prevPct: Double?
     private var prevCharging: Int?
     private var cachedModelName: String?
@@ -65,11 +67,42 @@ final class Recorder {
         ) { [weak self] _ in
             self?.model.updateLive()
         }
+
+        model.hiResHandler = { [weak self] on in self?.setHiRes(on) }
+        alerts.start()
+    }
+
+    /// High-resolution logging: one sample every 10 s for an hour (or until
+    /// stopped). An opt-in trade of a little power for benchmark-grade data.
+    func setHiRes(_ on: Bool) {
+        hiResTimer?.invalidate()
+        hiResTimer = nil
+        guard on else {
+            model.hiResUntil = nil
+            return
+        }
+        let end = Date().addingTimeInterval(3600)
+        model.hiResUntil = end
+        let t = Timer(timeInterval: 10, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                if Date() >= end {
+                    self.setHiRes(false)
+                } else if let snap = BatteryReader.read() {
+                    self.model.live = snap
+                    self.record(snap, source: "hires")
+                }
+            }
+        }
+        t.tolerance = 1
+        RunLoop.main.add(t, forMode: .common)
+        hiResTimer = t
     }
 
     private func powerSourcesChanged() {
         guard let snap = BatteryReader.read() else { return }
         model.live = snap
+        alerts.process(snap, settings: .shared)
         let charging = snap.onAC ? 1 : 0
         // A state transition gets persisted immediately so plug/unplug/full
         // events carry exact timestamps; plain percent ticks wait for the
@@ -82,15 +115,16 @@ final class Recorder {
     private func recordSample() {
         guard let snap = BatteryReader.read() else { return }
         model.live = snap
+        alerts.process(snap, settings: .shared)
         record(snap)
         if model.popoverIsLive { model.reloadDerived() }
     }
 
-    private func record(_ snap: BatterySnapshot) {
+    private func record(_ snap: BatterySnapshot, source: String = "live") {
         for event in transitions(to: snap) {
             store.insertEvent(ts: snap.ts, type: event)
         }
-        store.insert(snap, model: cachedModelName)
+        store.insert(snap, model: cachedModelName, source: source)
         prevPct = snap.chargePct
         prevCharging = snap.onAC ? 1 : 0
     }

@@ -6,6 +6,7 @@ import SwiftUI
 enum Theme {
     static let charge = dynamic(light: "#0d9a66", dark: "#17a26c")
     static let power = dynamic(light: "#2a78d6", dark: "#3d85d1")
+    static let health = dynamic(light: "#6a52cc", dark: "#8b7ae0")
     static let warn = dynamic(light: "#b87905", dark: "#c07e00")
     static let critical = dynamic(light: "#e34948", dark: "#d95550")
 

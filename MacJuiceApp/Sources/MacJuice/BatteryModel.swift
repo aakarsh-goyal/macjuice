@@ -16,7 +16,7 @@ enum ChartRange: String, CaseIterable, Identifiable {
 }
 
 enum ChartMetric: String, CaseIterable, Identifiable {
-    case charge = "Charge", power = "Power"
+    case charge = "Charge", power = "Power", health = "Health"
     var id: String { rawValue }
 }
 
@@ -43,6 +43,15 @@ final class BatteryModel: ObservableObject {
     /// Hover scrub position for the history chart. Lives here rather than in
     /// view @State because the CLT toolchain lacks SwiftUI's macro plugin.
     @Published var chartHover: HistoryPoint?
+
+    /// End of the current high-resolution logging window, nil when off.
+    @Published var hiResUntil: Date?
+    /// Wired by the recorder; true = start an hour of 10 s sampling, false = stop.
+    var hiResHandler: ((Bool) -> Void)?
+
+    func toggleHiRes() {
+        hiResHandler?(hiResUntil == nil)
+    }
 
     let store: Store
     private var liveTimer: Timer?
@@ -85,16 +94,28 @@ final class BatteryModel: ObservableObject {
             let weekRows = rows.filter { $0.ts >= weekAgo }
 
             var d = DerivedStats()
-            if let est = Analytics.fullRuntimeEstimate(weekRows, windowS: 4 * 3600) {
-                d.estFullRuntimeMin = est
-            } else if let est = Analytics.fullRuntimeEstimate(weekRows, windowS: 30 * 60) {
-                d.estFullRuntimeMin = est
-                d.estIsShortTerm = true
-            }
             d.sinceFull = Analytics.sinceFullCharge(rows, fullChargeTs: fullTs)
             let sessions = Analytics.sessions(weekRows)
             d.currentSession = sessions.last?.open == true ? sessions.last : nil
             d.lastSession = sessions.last(where: { !$0.open })
+
+            // Runtime projection only from rows inside a single discharge
+            // session — a window straddling a charge stretch nets out to a
+            // near-zero rate and projects absurd runtimes.
+            if let cur = d.currentSession {
+                let sessionRows = weekRows.filter { $0.ts >= cur.startTs && $0.charging == 0 }
+                if let est = Analytics.fullRuntimeEstimate(sessionRows, windowS: 4 * 3600) {
+                    d.estFullRuntimeMin = est
+                } else if let est = Analytics.fullRuntimeEstimate(sessionRows, windowS: 30 * 60) {
+                    d.estFullRuntimeMin = est
+                    d.estIsShortTerm = true
+                }
+            }
+            if d.estFullRuntimeMin == nil, let last = d.lastSession, let rate = last.pctPerHour {
+                d.estFullRuntimeMin = 100 / rate * 60
+            }
+            // Anything projecting past 48h is noise, not a runtime.
+            if let est = d.estFullRuntimeMin, est > 48 * 60 { d.estFullRuntimeMin = nil }
             if let cap = store.capacityEndpoints(), cap.last.ts - cap.first.ts >= 14 * 24 * 3600 {
                 let months = Double(cap.last.ts - cap.first.ts) / (30 * 24 * 3600)
                 d.capacityTrendMAhPerMonth = (cap.last.mAh - cap.first.mAh) / months
