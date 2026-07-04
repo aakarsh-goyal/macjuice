@@ -183,8 +183,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         if let frame = screen?.visibleFrame {
             x = min(max(x, frame.minX + 8), frame.maxX - size.width - 8)
         }
-        panel.setFrame(NSRect(x: x, y: anchor.minY - 6 - size.height,
-                              width: size.width, height: size.height), display: false)
+        let frame = NSRect(x: x, y: anchor.minY - 6 - size.height,
+                           width: size.width, height: size.height)
+        panel.setFrame(frame, display: false)
+        panel.appearance = Self.adaptiveAppearance(for: screen, under: frame)
 
         panel.alphaValue = 0
         panel.makeKeyAndOrderFront(nil)
@@ -240,19 +242,77 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                            backing: .buffered, defer: false)
         p.isOpaque = false
         p.backgroundColor = .clear
-        p.hasShadow = true
+        // The window shadow is computed for the rectangular window bounds and
+        // draws an ugly dark rim around the rounded glass; the glass supplies
+        // its own edge treatment.
+        p.hasShadow = false
         p.level = .popUpMenu
         p.collectionBehavior = [.transient, .fullScreenAuxiliary, .ignoresCycle]
         p.isMovable = false
         p.hidesOnDeactivate = false
         p.isReleasedWhenClosed = false
         p.animationBehavior = .none
+        p.appearance = Self.adaptiveAppearance(for: nil, under: .zero)
         glass.frame = p.contentLayoutRect
         host.frame = glass.bounds
         p.contentView = glass
 
         panel = p
         panelHost = host
+
+        // Agent apps don't reliably inherit system theme flips; track them.
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("AppleInterfaceThemeChangedNotification"),
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, let panel = self.panel else { return }
+                panel.appearance = Self.adaptiveAppearance(for: panel.screen, under: panel.frame)
+            }
+        }
+    }
+
+    /// Control Center behavior: the glass matches the *backdrop*, not just the
+    /// theme. Light mode is always light; dark mode goes light when the
+    /// wallpaper under the panel is bright. (The user preference is read
+    /// directly because an LSUIElement app's effectiveAppearance can lag.)
+    private static func adaptiveAppearance(for screen: NSScreen?, under rect: NSRect) -> NSAppearance? {
+        let dark = UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)?["AppleInterfaceStyle"] as? String == "Dark"
+        guard dark else { return NSAppearance(named: .aqua) }
+        if let screen, wallpaperIsLight(on: screen, under: rect) == true {
+            return NSAppearance(named: .aqua)
+        }
+        return NSAppearance(named: .darkAqua)
+    }
+
+    /// Average luminance of the wallpaper region a rect covers (aspect-fill
+    /// mapping), by downsampling the crop to a single pixel.
+    private static func wallpaperIsLight(on screen: NSScreen, under rect: NSRect) -> Bool? {
+        guard let url = NSWorkspace.shared.desktopImageURL(for: screen),
+              let image = NSImage(contentsOf: url),
+              let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
+              cg.width > 0, cg.height > 0 else { return nil }
+
+        let sf = screen.frame
+        let scale = max(CGFloat(cg.width) / sf.width, CGFloat(cg.height) / sf.height)
+        let offsetX = (CGFloat(cg.width) - sf.width * scale) / 2
+        let offsetY = (CGFloat(cg.height) - sf.height * scale) / 2
+        let topDistance = sf.maxY - rect.maxY
+        var crop = CGRect(x: offsetX + (rect.minX - sf.minX) * scale,
+                          y: offsetY + topDistance * scale,
+                          width: rect.width * scale,
+                          height: rect.height * scale)
+        crop = crop.intersection(CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
+        guard !crop.isEmpty, let cropped = cg.cropping(to: crop) else { return nil }
+
+        var px = [UInt8](repeating: 0, count: 4)
+        guard let ctx = CGContext(data: &px, width: 1, height: 1, bitsPerComponent: 8,
+                                  bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.interpolationQuality = .medium
+        ctx.draw(cropped, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        let lum = 0.2126 * Double(px[0]) + 0.7152 * Double(px[1]) + 0.0722 * Double(px[2])
+        return lum / 255 > 0.55
     }
 
     /// Re-fit the panel to its content, keeping the top edge pinned under
