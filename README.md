@@ -12,16 +12,13 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/menubar.png" width="260" alt="Menu bar: bolt icon with live watts">
+  <img src="docs/images/menubar.png" width="240" alt="Menu bar: bolt icon with live watts">
 </p>
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/images/popover-dark.png">
-    <img src="docs/images/popover-light.png" width="360" alt="MacJuice panel">
-  </picture>
+  <img src="docs/images/panel.png" width="420" alt="MacJuice Liquid Glass panel under the menu bar, content refracting through the glass">
   <br>
-  <sub>(flat renders — on macOS 26+ the panel is real Liquid Glass, refracting whatever is behind it)</sub>
+  <sub>Real screenshot — the panel is Liquid Glass on macOS 26+, refracting whatever is behind it.</sub>
 </p>
 
 ## What you see
