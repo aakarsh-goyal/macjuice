@@ -57,6 +57,14 @@ final class Recorder {
             CFRunLoopAddSource(CFRunLoopGetMain(), src, .commonModes)
             powerSource = src
         }
+
+        // Low Power Mode toggles don't fire a power-source callback; refresh
+        // the UI (glyph tint, state line) the moment the mode changes.
+        NotificationCenter.default.addObserver(
+            forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.model.updateLive()
+        }
     }
 
     private func powerSourcesChanged() {

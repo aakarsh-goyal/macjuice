@@ -29,6 +29,7 @@ struct BatterySnapshot {
     var isCharging = false
     var fullyCharged = false
     var atCritical = false
+    var lowPowerMode = false
 
     var timeRemainingMin: Int?   // to empty (discharging) or to full (charging)
     var serial: String?
@@ -116,6 +117,7 @@ enum BatteryReader {
             s.adapterDesc = (a["Name"] as? String) ?? (a["Description"] as? String)
         }
 
+        s.lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
         s.condition = healthCondition()
         return s
     }

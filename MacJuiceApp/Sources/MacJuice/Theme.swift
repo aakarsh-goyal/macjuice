@@ -9,11 +9,12 @@ enum Theme {
     static let warn = dynamic(light: "#b87905", dark: "#c07e00")
     static let critical = dynamic(light: "#e34948", dark: "#d95550")
 
-    static func batteryTone(pct: Double?, onAC: Bool) -> Color {
+    /// Battery glyph fill. Red wins over yellow: a nearly-dead battery matters
+    /// more than the power mode. Charging suspends the red (juice incoming).
+    static func batteryTone(pct: Double?, onAC: Bool, lowPower: Bool) -> Color {
         guard let pct else { return .secondary }
-        if onAC { return charge }
-        if pct <= 10 { return critical }
-        if pct <= 20 { return warn }
+        if pct <= 20 && !onAC { return critical }
+        if lowPower { return Color(nsColor: .systemYellow) }
         return charge
     }
 

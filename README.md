@@ -1,156 +1,122 @@
-# macjuice
+<p align="center">
+  <img src="MacJuiceApp/Support/icon-master.png" width="108" alt="MacJuice icon">
+</p>
 
-A free, self-hosted macOS battery dashboard — the live **and** historical stats
-that coconutBattery and Battery Health charge for, built entirely on macOS's own
-`ioreg` / `pmset` / `system_profiler`. No paid app, no cloud, no admin rights.
+<h1 align="center">MacJuice</h1>
 
-The paid apps are mostly GUIs over those free tools; their "pro" features are
-just the free data **recorded over time**. macjuice does the recording — and
-shows it on a retro-futuristic power console.
+<p align="center">
+  A native macOS menu bar battery monitor with real history.<br>
+  Live power draw in the menu bar; charge, health, temperature, sessions and
+  long-term graphs one click away.<br>
+  The stats coconutBattery and Battery Health charge for — free, local, no cloud.
+</p>
 
-## Native menu bar app (current)
+<p align="center">
+  <img src="docs/images/menubar.png" width="260" alt="Menu bar: bolt icon with live watts">
+</p>
 
-`MacJuiceApp/` is a native Swift rewrite that replaces **both** launchd agents
-with a single menu bar app — no Python, no Flask, no subprocesses. It reads the
-battery straight from IOKit (microseconds per sample), writes to the **same
-`battery.db`** so history carries over, and draws a SwiftUI popover with live
-stats, dual health numbers, history charts (24H/7D/30D/ALL with plug/unplug
-markers and hover scrubbing), discharge sessions, and runtime estimates.
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/popover-dark.png">
+    <img src="docs/images/popover-light.png" width="360" alt="MacJuice popover">
+  </picture>
+</p>
 
-```sh
-cd MacJuiceApp && ./Scripts/build.sh --install   # builds, installs to /Applications, launches
-```
+## What you see
 
-- Menu bar shows a bolt + live system draw (configurable: icon only / % / watts).
-- Starts at login automatically (ServiceManagement; toggle in the gear menu).
-- Sampling every ~120s via a system-coalesced background activity; plug/unplug
-  events are captured instantly with exact timestamps. No power assertions —
-  never wakes the Mac.
-- Extras the Python collector couldn't get on Apple Silicon: true system power
-  draw (`system_watts`, even on AC when the battery is bypassed), battery
-  temperature, raw capacity mAh, and adapter details.
-- Footprint: ~1.5 MB app, ~20 MB RSS, ~0.0% CPU.
-- Diagnostics: `MacJuice --sample` (one JSON snapshot), `--login-status`.
+**In the menu bar** — a bolt with a live number (configurable: icon only /
+percentage / watts):
 
-The Python agents below still work but are superseded; `./uninstall.sh`
-removes them (data is kept).
+- on battery: system power draw ("6.6W")
+- on AC: watts flowing into the battery ("+18W")
 
-![dashboard](https://github.com/raghavtripped/macjuice) <!-- open http://127.0.0.1:5137 after install -->
+**In the popover** — one click:
 
-## Features
+- Charge %, state, and time-to-empty / time-to-full
+- Battery glyph that goes **yellow in Low Power Mode** and **red when low**
+- Live tiles: system draw, adapter (rated + actual input watts), temperature,
+  **two health numbers** (Apple's smoothed % *and* the raw mAh ratio, which can
+  read >100% on a fresh battery), cycle count, current/full charge in mAh
+- History charts — charge % or battery watts over **24H / 7D / 30D / ALL**,
+  with plug/unplug markers and hover scrubbing
+- Discharge sessions ("On battery 2:04 · −11% · 5.3%/h"), time since full
+  charge, and estimated full-charge runtime from your actual recent use
+- Long-term capacity trend (mAh/month) once two weeks of data accumulate
 
-- **Live gauge** — charge %, state-aware colour (teal charging / amber
-  discharging / red critical), power draw in watts, time remaining.
-- **History graphs** — charge % and watts over time, with a 24H / 7D / 30D / ALL
-  range selector and **plug-in / unplug / full-charge markers** on the timeline.
-- **Two health numbers** — the raw mAh ratio (max÷design, can read >100% on a
-  fresh battery, like coconutBattery) **and** Apple's smoothed Maximum Capacity %.
-- **Derived metrics** — charge/discharge rate, runtime since last full charge,
-  short- and medium-term full-charge runtime estimates, capacity-decline trend.
-- **Discharge sessions** — every unplugged stretch with how much you drained.
-- **In-app manual + controls** — a MANUAL drawer, plus STOP and UNINSTALL
-  buttons right in the dashboard.
+## Built to sip power
+
+No Python, no Electron, no subprocess spawning. One ~1.5 MB app: battery data
+is read straight from IOKit (microseconds per read), history goes into SQLite,
+and nothing polls faster than it has to:
+
+| What | How often |
+|---|---|
+| Menu bar number | pushed by macOS power events (every % step, plug/unplug), plus a coalesced 30 s refresh while showing watts — paused when the display sleeps |
+| History sample → SQLite | every ~120 s via a system-coalesced background activity, **plus instantly** on plug/unplug/full-charge so events carry exact timestamps |
+| Popover while open | every 2 s |
+| Popover closed | nothing |
+
+No power assertions — the Mac sleeps exactly as it would without MacJuice.
+Observed footprint: **~20 MB RSS, ~0.0% CPU**.
+
+Because it reads IORegistry directly, it also captures what the old
+text-scraping approach missed on modern macOS: true system draw
+(`PowerTelemetryData.SystemLoad`, even on AC when the battery is bypassed),
+battery temperature, raw capacities, and adapter details.
 
 ## Install
 
+Requirements: Apple Silicon Mac, macOS 15+, Xcode Command Line Tools
+(`xcode-select --install`).
+
 ```sh
-./install.sh
+git clone https://github.com/aakarsh-goyal/macjuice.git
+cd macjuice/MacJuiceApp
+./Scripts/build.sh --install     # builds, ad-hoc signs, installs to /Applications, launches
 ```
 
-This creates a venv, seeds history from `pmset -g log` (approximate — detailed
-graphs begin after install), and loads **two launchd agents that auto-start at
-login**:
+First launch registers **Launch at Login** (toggle it in the gear menu, along
+with the menu bar label style). If a database from a previous MacJuice install
+exists, recording continues right where it left off.
 
-| Agent | What it does |
-|-------|--------------|
-| `com.macjuice.collector` | Samples the battery every 120s into SQLite. Never wakes the Mac from sleep. |
-| `com.macjuice.dashboard` | Serves the web UI on `127.0.0.1:5137`, kept alive (auto-respawns). |
+## Your data
 
-Then just open **http://127.0.0.1:5137** — anytime, even after a reboot.
+Everything lives in one SQLite file you own:
 
-## Using it
-
-Everything is in the dashboard itself:
-
-- **✦ MANUAL** — full guide (what each metric means, all the commands).
-- **⏻ STOP** — turn it off now (dashboard only, or everything). Comes back at
-  next login unless you uninstall.
-- **✕ UNINSTALL** — remove both agents for good, optionally erasing data.
-
-### Terminal equivalents
-
-```sh
-# check what's running
-launchctl list | grep macjuice
-
-# stop / start just the dashboard (logging keeps running)
-launchctl unload ~/Library/LaunchAgents/com.macjuice.dashboard.plist
-launchctl load   ~/Library/LaunchAgents/com.macjuice.dashboard.plist
-
-# pause / resume background logging
-launchctl unload ~/Library/LaunchAgents/com.macjuice.collector.plist
-launchctl load   ~/Library/LaunchAgents/com.macjuice.collector.plist
+```
+~/Library/Application Support/macjuice/battery.db
 ```
 
-## Update
+- `samples` — one row per reading: charge %, mAh, watts, system watts,
+  temperature, voltage, amperage, health, cycles, adapter, time remaining
+- `events` — `plug_in` / `unplug` / `full_charge` with exact timestamps
+
+The schema is compatible with the original Python collector, so old history
+carries over untouched. Query it with plain `sqlite3` whenever you like.
+
+## Diagnostics
 
 ```sh
-cd ~/Projects/macjuice && git pull && ./install.sh   # safe to re-run anytime
+/Applications/MacJuice.app/Contents/MacOS/MacJuice --sample         # one reading as JSON
+/Applications/MacJuice.app/Contents/MacOS/MacJuice --login-status   # login item state
 ```
 
 ## Uninstall
 
 ```sh
-./uninstall.sh                                            # removes both agents, keeps data
-rm -rf "$HOME/Library/Application Support/macjuice"      # also erase recorded data
+# quit from the gear menu first (or: pkill -x MacJuice)
+rm -rf /Applications/MacJuice.app                          # removes app + login item
+rm -rf "$HOME/Library/Application Support/macjuice"        # optional: erase recorded data
 ```
 
-## Where things live
+## Legacy Python version
 
-| | Path |
-|--|--|
-| Code | `~/Projects/macjuice` |
-| Database | `~/Library/Application Support/macjuice/battery.db` |
-| Logs | `~/Library/Logs/macjuice/` |
-| Agents | `~/Library/LaunchAgents/com.macjuice.{collector,dashboard}.plist` |
-
-## How it works
-
-```
-collector agent ──writes──▶  battery.db (SQLite, WAL)  ◀──reads── dashboard agent
- ioreg/pmset (120s)                                                 Flask + Chart.js
- system_profiler (hourly)                                           127.0.0.1:5137
-```
-
-- Light reads (`ioreg` + `pmset`, ~30 ms) run every cycle; the heavy
-  `system_profiler` read runs only once an hour and is cached — so the collector
-  is effectively free in battery terms.
-- It takes no power assertion, so it **never wakes your Mac from sleep**; you
-  simply get no samples while it's asleep.
-- `adapter_watts` is often blank when fully charged on AC — that's normal (the
-  charge controller bypasses the battery), not a fault.
-
-## Architecture
-
-Pure-Python, stdlib-heavy, fully tested. Each module has one job:
-
-| Module | Responsibility |
-|--------|----------------|
-| `sampler.py` | Parse `ioreg`/`pmset`/`system_profiler` into normalized samples |
-| `store.py` | SQLite schema + queries (WAL, `busy_timeout`, `INSERT OR IGNORE`) |
-| `analytics.py` | Pure derived metrics (health, rates, runtime, sessions) |
-| `collector.py` | The 120s daemon loop + transition-event detection |
-| `backfill.py` | One-time history seed from `pmset -g log` |
-| `app.py` | Read-only Flask API + control endpoints |
-| `templates/dashboard.html` | The Chart.js console UI |
-
-## Tests
-
-```sh
-cd macjuice && .venv/bin/pytest
-```
+`macjuice/` contains the original implementation this project started as — a
+launchd collector plus a Flask web dashboard on `127.0.0.1:5137`, built on
+`ioreg`/`pmset`/`system_profiler`. It is fully superseded by the native app
+and kept for reference (its tests still pass). If its agents are installed,
+`./uninstall.sh` removes them and keeps your data.
 
 ## License
 
-Personal project. Built on free macOS tooling; no third-party runtime
-dependencies beyond Flask.
+Personal project. Built entirely on free macOS tooling.

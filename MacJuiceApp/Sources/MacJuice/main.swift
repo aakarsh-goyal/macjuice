@@ -24,6 +24,7 @@ if arguments.contains("--sample") {
         out["on_ac"] = s.onAC
         out["is_charging"] = s.isCharging
         out["fully_charged"] = s.fullyCharged
+        out["low_power_mode"] = s.lowPowerMode
         out["time_remaining_min"] = s.timeRemainingMin
         out["health_raw_pct"] = s.healthRawPct
         out["health_reported_pct"] = s.healthReportedPct

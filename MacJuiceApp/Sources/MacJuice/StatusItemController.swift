@@ -91,6 +91,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             guard let pct = snap.chargePct else { return "" }
             return "\(Int(pct.rounded()))%"
         case .watts:
+            // On AC the interesting number is what's flowing into the battery;
+            // on battery it's what the system is draining.
+            if snap.onAC, let b = snap.watts, b > 0.05 {
+                return "+" + Fmt.wattsShort(b)
+            }
             guard let w = snap.systemWatts ?? snap.watts.map({ abs($0) }) else { return "" }
             return Fmt.wattsShort(w)
         }

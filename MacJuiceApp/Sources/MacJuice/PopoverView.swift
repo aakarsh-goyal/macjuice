@@ -31,7 +31,7 @@ private struct HeaderView: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            BatteryGlyph(pct: snap.chargePct, onAC: snap.onAC)
+            BatteryGlyph(pct: snap.chargePct, onAC: snap.onAC, lowPower: snap.lowPowerMode)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
                     Text(snap.chargePct.map { "\(Int($0.rounded()))" } ?? "—")
@@ -49,16 +49,20 @@ private struct HeaderView: View {
     }
 
     private var stateLine: String {
+        var line: String
         if snap.onAC {
-            if snap.fullyCharged { return "Full · plugged in" }
-            if snap.isCharging {
-                if let t = snap.timeRemainingMin { return "Charging · \(Fmt.hm(Double(t))) to full" }
-                return "Charging"
+            if snap.fullyCharged {
+                line = "Full · plugged in"
+            } else if snap.isCharging {
+                line = snap.timeRemainingMin.map { "Charging · \(Fmt.hm(Double($0))) to full" } ?? "Charging"
+            } else {
+                line = "On AC · not charging"
             }
-            return "On AC · not charging"
+        } else {
+            line = snap.timeRemainingMin.map { "Discharging · \(Fmt.hm(Double($0))) left" } ?? "Discharging"
         }
-        if let t = snap.timeRemainingMin { return "Discharging · \(Fmt.hm(Double(t))) left" }
-        return "Discharging"
+        if snap.lowPowerMode { line += " · Low Power" }
+        return line
     }
 }
 
@@ -68,6 +72,7 @@ private struct HeaderView: View {
 private struct BatteryGlyph: View {
     let pct: Double?
     let onAC: Bool
+    let lowPower: Bool
 
     var body: some View {
         HStack(spacing: 1.5) {
@@ -76,7 +81,7 @@ private struct BatteryGlyph: View {
                     .strokeBorder(.tertiary, lineWidth: 1.5)
                     .frame(width: 46, height: 23)
                 RoundedRectangle(cornerRadius: 4.5, style: .continuous)
-                    .fill(Theme.batteryTone(pct: pct, onAC: onAC).gradient)
+                    .fill(Theme.batteryTone(pct: pct, onAC: onAC, lowPower: lowPower).gradient)
                     .frame(width: max(4, 40 * (pct ?? 0) / 100), height: 17)
                     .padding(.leading, 3)
                 if onAC {

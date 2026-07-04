@@ -48,6 +48,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             model.chartRange = range
         }
         model.updateLive()
+        if ProcessInfo.processInfo.environment["MJ_PREVIEW_LPM"] != nil {
+            model.live?.lowPowerMode = true
+        }
         model.reloadDerived()
         model.reloadChart()
         // Give the async reloads a beat to land before rendering.
