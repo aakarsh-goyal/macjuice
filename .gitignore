@@ -13,3 +13,6 @@ MacJuiceApp/.build/
 MacJuiceApp/dist/
 MacJuiceApp/.swiftpm/
 MacJuiceApp/Support/AppIcon.iconset/
+
+# stray SwiftPM cache at repo root
+.build/
