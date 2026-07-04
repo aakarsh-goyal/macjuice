@@ -194,21 +194,33 @@ private struct ChartSection: View {
     var body: some View {
         VStack(spacing: 8) {
             HStack {
-                Picker("", selection: $model.chartMetric) {
-                    ForEach(ChartMetric.allCases) { Text($0.rawValue).tag($0) }
+                if #available(macOS 26.0, *) {
+                    GlassSegmentedControl(selection: $model.chartMetric,
+                                          items: ChartMetric.allCases,
+                                          segmentWidth: 56)
+                    Spacer(minLength: 6)
+                    GlassSegmentedControl(selection: $model.chartRange,
+                                          items: ChartRange.allCases,
+                                          segmentWidth: 38)
+                } else {
+                    Picker("", selection: $model.chartMetric) {
+                        ForEach(ChartMetric.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .controlSize(.small)
+                    .fixedSize()
+                    .focusEffectDisabled()
+                    Spacer()
+                    Picker("", selection: $model.chartRange) {
+                        ForEach(ChartRange.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .controlSize(.small)
+                    .fixedSize()
+                    .focusEffectDisabled()
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .controlSize(.small)
-                .fixedSize()
-                Spacer()
-                Picker("", selection: $model.chartRange) {
-                    ForEach(ChartRange.allCases) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .controlSize(.small)
-                .fixedSize()
             }
             HistoryChart(points: model.chartPoints,
                          events: model.chartEvents,
@@ -316,6 +328,7 @@ private struct FooterBar: View {
             }
             Spacer()
             Menu {
+                Toggle("Keep on Top", isOn: $settings.pinPanel)
                 Toggle("Launch at Login", isOn: $settings.launchAtLogin)
                 Picker("Menu Bar Shows", selection: $settings.labelStyle) {
                     ForEach(LabelStyle.allCases) { Text($0.title).tag($0) }
@@ -340,6 +353,7 @@ private struct FooterBar: View {
             }
             .menuIndicator(.hidden)
             .buttonStyle(.borderless)
+            .focusEffectDisabled()
             .fixedSize()
         }
     }

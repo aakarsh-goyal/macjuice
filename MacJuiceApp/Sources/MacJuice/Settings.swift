@@ -22,6 +22,12 @@ final class Settings: ObservableObject {
         didSet { UserDefaults.standard.set(labelStyle.rawValue, forKey: "labelStyle") }
     }
 
+    /// Keep the panel floating above other windows instead of dismissing on
+    /// outside clicks / Esc.
+    @Published var pinPanel: Bool {
+        didSet { UserDefaults.standard.set(pinPanel, forKey: "pinPanel") }
+    }
+
     @Published var notifyLowBattery: Bool {
         didSet { UserDefaults.standard.set(notifyLowBattery, forKey: "notifyLowBattery") }
     }
@@ -59,6 +65,7 @@ final class Settings: ObservableObject {
         notifyLowBattery = flag("notifyLowBattery")
         notifyFullyCharged = flag("notifyFullyCharged")
         notifyHighTemp = flag("notifyHighTemp")
+        pinPanel = UserDefaults.standard.bool(forKey: "pinPanel")
     }
 
     /// Register once on first launch from a stable location, honoring any

@@ -34,7 +34,11 @@ percentage / watts):
 
 **In the panel** — one click opens a floating **Liquid Glass** panel
 (real `NSGlassEffectView` lensing on macOS 26+, Control Center-style, with an
-NSPopover fallback on older systems):
+NSPopover fallback on older systems). The chart toggles are Liquid Glass
+segmented controls — an interactive glass capsule slides between segments.
+**Keep on Top** (gear menu) pins the panel above every window and across
+Spaces for live monitoring; unpinned, it dismisses on Esc or any outside
+click:
 
 - Charge %, state, and time-to-empty / time-to-full
 - Battery glyph that goes **yellow in Low Power Mode** and **red when low**
@@ -53,11 +57,11 @@ NSPopover fallback on older systems):
 - Fully charged — an unplug reminder
 - Battery hot — sustained >40 °C
 
-**In the gear menu** — launch at login, menu bar label style, alert toggles,
-**Copy Stats** (plaintext summary to the clipboard), **Export History as
-CSV**, and **high-resolution logging**: one sample every 10 s for the next
-hour (stop it early from the same menu) when you want benchmark-grade data
-for a specific workload.
+**In the gear menu** — keep on top, launch at login, menu bar label style,
+alert toggles, **Copy Stats** (plaintext summary to the clipboard), **Export
+History as CSV**, and **high-resolution logging**: one sample every 10 s for
+the next hour (stop it early from the same menu) when you want
+benchmark-grade data for a specific workload.
 
 ## Built to sip power
 
@@ -83,8 +87,23 @@ battery temperature, raw capacities, and adapter details.
 
 ## Install
 
-Requirements: Apple Silicon Mac, macOS 15+, Xcode Command Line Tools
+Requirements: macOS 15+ (the Liquid Glass panel needs macOS 26+; built for
+Apple Silicon, Intel untested), Xcode Command Line Tools
 (`xcode-select --install`).
+
+### Homebrew
+
+```sh
+brew install aakarsh-goyal/macjuice/macjuice
+cp -R "$(brew --prefix)/opt/macjuice/MacJuice.app" /Applications/
+open /Applications/MacJuice.app
+```
+
+The formula builds from source on your machine, so there's no Gatekeeper
+quarantine to fight. The copy into /Applications gives Launch at Login a
+stable path that survives upgrades.
+
+### From source
 
 ```sh
 git clone https://github.com/aakarsh-goyal/macjuice.git
@@ -137,4 +156,4 @@ and kept for reference (its tests still pass). If its agents are installed,
 
 ## License
 
-Personal project. Built entirely on free macOS tooling.
+MIT. Built entirely on free macOS tooling.

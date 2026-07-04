@@ -67,6 +67,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.updatePanelFrame() }
             .store(in: &cancellables)
+        settings.$pinPanel
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] pinned in self?.applyPinState(pinned) }
+            .store(in: &cancellables)
 
         let wsc = NSWorkspace.shared.notificationCenter
         wsc.addObserver(self, selector: #selector(screensSlept),
@@ -142,7 +146,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     @objc private func screensSlept() {
         labelTimer?.invalidate()
         labelTimer = nil
-        if panel?.isVisible == true { closePanel() }
+        if panel?.isVisible == true, !settings.pinPanel { closePanel() }
     }
 
     @objc private func screensWoke() {
@@ -186,7 +190,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         let frame = NSRect(x: x, y: anchor.minY - 6 - size.height,
                            width: size.width, height: size.height)
         panel.setFrame(frame, display: false)
-        panel.appearance = Self.adaptiveAppearance(for: screen, under: frame)
+        panel.appearance = Self.systemAppearance()
+        applyPinState(settings.pinPanel)
 
         panel.alphaValue = 0
         panel.makeKeyAndOrderFront(nil)
@@ -195,9 +200,30 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             panel.animator().alphaValue = 1
         }
 
-        // Click anywhere outside the app dismisses; Esc dismisses. (Debug
-        // screenshot mode keeps the panel up despite outside clicks.)
-        guard ProcessInfo.processInfo.environment["MJ_SHOW_PANEL"] == nil else { return }
+        if !settings.pinPanel { installMonitors() }
+    }
+
+    /// Transient (default): dismiss on outside click or Esc. Pinned: float
+    /// above other windows, follow across Spaces, dismiss only from the
+    /// status item or by unpinning.
+    private func applyPinState(_ pinned: Bool) {
+        guard let panel else { return }
+        panel.level = pinned ? .floating : .popUpMenu
+        panel.collectionBehavior = pinned
+            ? [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+            : [.transient, .fullScreenAuxiliary, .ignoresCycle]
+        guard panel.isVisible else { return }
+        if pinned {
+            removeMonitors()
+        } else if clickMonitor == nil {
+            installMonitors()
+        }
+    }
+
+    private func installMonitors() {
+        // Debug screenshot mode keeps the panel up despite outside clicks.
+        guard ProcessInfo.processInfo.environment["MJ_SHOW_PANEL"] == nil,
+              clickMonitor == nil else { return }
         clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             Task { @MainActor in self?.closePanel() }
         }
@@ -210,11 +236,15 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         }
     }
 
+    private func removeMonitors() {
+        if let m = clickMonitor { NSEvent.removeMonitor(m); clickMonitor = nil }
+        if let m = keyMonitor { NSEvent.removeMonitor(m); keyMonitor = nil }
+    }
+
     private func closePanel() {
         guard let panel, panel.isVisible else { return }
         model.endLiveUpdates()
-        if let m = clickMonitor { NSEvent.removeMonitor(m); clickMonitor = nil }
-        if let m = keyMonitor { NSEvent.removeMonitor(m); keyMonitor = nil }
+        removeMonitors()
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.12
             panel.animator().alphaValue = 0
@@ -227,10 +257,21 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private func buildPanel() {
         let host = NSHostingView(rootView: dashboardView())
         host.autoresizingMask = [.width, .height]
+        // Clip the hosting layer to the glass curve — otherwise its square
+        // corners paint a faint ghost outline past the rounded glass edge.
+        host.wantsLayer = true
+        host.layer?.cornerRadius = 26
+        host.layer?.cornerCurve = .continuous
+        host.layer?.masksToBounds = true
+        // The "ghost outline" while the panel is key is the first responder's
+        // focus ring drawn around the hosting view; this is a mouse-first
+        // surface, so no rings anywhere.
+        host.focusRingType = .none
 
         let glass = NSGlassEffectView()
         glass.style = .regular
         glass.cornerRadius = 26
+        glass.focusRingType = .none
         if #available(macOS 27.0, *) {
             glass.effectIsInteractive = true
         }
@@ -252,10 +293,23 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         p.hidesOnDeactivate = false
         p.isReleasedWhenClosed = false
         p.animationBehavior = .none
-        p.appearance = Self.adaptiveAppearance(for: nil, under: .zero)
-        glass.frame = p.contentLayoutRect
+        p.appearance = Self.systemAppearance()
+
+        // Clip the ENTIRE hierarchy — glass included — to the rounded shape.
+        // The glass view's backdrop region is square; without an ancestor
+        // mask its edges bleed past the rounded corners as a ghost outline.
+        let container = NSView()
+        container.wantsLayer = true
+        container.layer?.cornerRadius = 26
+        container.layer?.cornerCurve = .continuous
+        container.layer?.masksToBounds = true
+        container.autoresizingMask = [.width, .height]
+        glass.autoresizingMask = [.width, .height]
+        p.contentView = container
+        container.frame = p.contentLayoutRect
+        glass.frame = container.bounds
         host.frame = glass.bounds
-        p.contentView = glass
+        container.addSubview(glass)
 
         panel = p
         panelHost = host
@@ -265,54 +319,15 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             forName: NSNotification.Name("AppleInterfaceThemeChangedNotification"),
             object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in
-                guard let self, let panel = self.panel else { return }
-                panel.appearance = Self.adaptiveAppearance(for: panel.screen, under: panel.frame)
-            }
+            Task { @MainActor in self?.panel?.appearance = Self.systemAppearance() }
         }
     }
 
-    /// Control Center behavior: the glass matches the *backdrop*, not just the
-    /// theme. Light mode is always light; dark mode goes light when the
-    /// wallpaper under the panel is bright. (The user preference is read
-    /// directly because an LSUIElement app's effectiveAppearance can lag.)
-    private static func adaptiveAppearance(for screen: NSScreen?, under rect: NSRect) -> NSAppearance? {
+    /// Follow the system theme, read straight from the user preference — an
+    /// LSUIElement app's own effectiveAppearance can lag or resolve wrong.
+    private static func systemAppearance() -> NSAppearance? {
         let dark = UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)?["AppleInterfaceStyle"] as? String == "Dark"
-        guard dark else { return NSAppearance(named: .aqua) }
-        if let screen, wallpaperIsLight(on: screen, under: rect) == true {
-            return NSAppearance(named: .aqua)
-        }
-        return NSAppearance(named: .darkAqua)
-    }
-
-    /// Average luminance of the wallpaper region a rect covers (aspect-fill
-    /// mapping), by downsampling the crop to a single pixel.
-    private static func wallpaperIsLight(on screen: NSScreen, under rect: NSRect) -> Bool? {
-        guard let url = NSWorkspace.shared.desktopImageURL(for: screen),
-              let image = NSImage(contentsOf: url),
-              let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
-              cg.width > 0, cg.height > 0 else { return nil }
-
-        let sf = screen.frame
-        let scale = max(CGFloat(cg.width) / sf.width, CGFloat(cg.height) / sf.height)
-        let offsetX = (CGFloat(cg.width) - sf.width * scale) / 2
-        let offsetY = (CGFloat(cg.height) - sf.height * scale) / 2
-        let topDistance = sf.maxY - rect.maxY
-        var crop = CGRect(x: offsetX + (rect.minX - sf.minX) * scale,
-                          y: offsetY + topDistance * scale,
-                          width: rect.width * scale,
-                          height: rect.height * scale)
-        crop = crop.intersection(CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
-        guard !crop.isEmpty, let cropped = cg.cropping(to: crop) else { return nil }
-
-        var px = [UInt8](repeating: 0, count: 4)
-        guard let ctx = CGContext(data: &px, width: 1, height: 1, bitsPerComponent: 8,
-                                  bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(),
-                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
-        ctx.interpolationQuality = .medium
-        ctx.draw(cropped, in: CGRect(x: 0, y: 0, width: 1, height: 1))
-        let lum = 0.2126 * Double(px[0]) + 0.7152 * Double(px[1]) + 0.0722 * Double(px[2])
-        return lum / 255 > 0.55
+        return NSAppearance(named: dark ? .darkAqua : .aqua)
     }
 
     /// Re-fit the panel to its content, keeping the top edge pinned under
