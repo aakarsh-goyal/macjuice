@@ -18,8 +18,10 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/popover-dark.png">
-    <img src="docs/images/popover-light.png" width="360" alt="MacJuice popover">
+    <img src="docs/images/popover-light.png" width="360" alt="MacJuice panel">
   </picture>
+  <br>
+  <sub>(flat renders — on macOS 26+ the panel is real Liquid Glass, refracting whatever is behind it)</sub>
 </p>
 
 ## What you see
@@ -30,7 +32,9 @@ percentage / watts):
 - on battery: system power draw ("6.6W")
 - on AC: watts flowing into the battery ("+18W")
 
-**In the popover** — one click:
+**In the panel** — one click opens a floating **Liquid Glass** panel
+(real `NSGlassEffectView` lensing on macOS 26+, Control Center-style, with an
+NSPopover fallback on older systems):
 
 - Charge %, state, and time-to-empty / time-to-full
 - Battery glyph that goes **yellow in Low Power Mode** and **red when low**

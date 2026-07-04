@@ -36,6 +36,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         recorder.start()
         Settings.shared.autoRegisterLoginItemIfNeeded()
+
+        if ProcessInfo.processInfo.environment["MJ_SHOW_PANEL"] != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.statusController.debugShowPanel()
+            }
+        }
     }
 
     /// Offscreen render of the popover in both appearances — a development

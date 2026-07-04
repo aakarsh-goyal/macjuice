@@ -2,18 +2,36 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// Owns the NSStatusItem and the popover. The menu bar label re-renders only
-/// when its string actually changes, and the label-refresh timer pauses while
-/// the displays are asleep.
+/// Borderless panel that can take keyboard focus without activating the app —
+/// the same behavior as Control Center's panels.
+private final class GlassPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+}
+
+/// Owns the NSStatusItem and the dashboard surface. On macOS 26+ the surface
+/// is a floating Liquid Glass panel (real lensing via NSGlassEffectView);
+/// older systems fall back to a classic NSPopover. The menu bar label
+/// re-renders only when its string actually changes, and the label-refresh
+/// timer pauses while the displays are asleep.
 @MainActor
 final class StatusItemController: NSObject, NSPopoverDelegate {
     private let model: BatteryModel
     private let settings: Settings
     private let item: NSStatusItem
-    private let popover = NSPopover()
     private var cancellables = Set<AnyCancellable>()
     private var labelTimer: Timer?
     private var lastTitle = "\u{0}"   // sentinel so the first update always applies
+
+    private var popover: NSPopover?
+    private var panel: NSPanel?
+    private var panelHost: NSView?
+    private var clickMonitor: Any?
+    private var keyMonitor: Any?
+
+    private var glassAvailable: Bool {
+        if #available(macOS 26.0, *) { return true }
+        return false
+    }
 
     init(model: BatteryModel, settings: Settings) {
         self.model = model
@@ -29,17 +47,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             button.image = image
             button.imagePosition = .imageLeading
             button.target = self
-            button.action = #selector(togglePopover)
+            button.action = #selector(toggleUI)
         }
-
-        popover.behavior = .transient
-        popover.animates = true
-        popover.delegate = self
-        popover.contentViewController = NSHostingController(
-            rootView: PopoverView()
-                .environmentObject(model)
-                .environmentObject(settings)
-        )
 
         model.$live
             .receive(on: DispatchQueue.main)
@@ -53,6 +62,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 self.configureLabelTimer()
             }
             .store(in: &cancellables)
+        // Content height changes (insight rows appearing) resize the panel.
+        model.$derived
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.updatePanelFrame() }
+            .store(in: &cancellables)
 
         let wsc = NSWorkspace.shared.notificationCenter
         wsc.addObserver(self, selector: #selector(screensSlept),
@@ -60,6 +74,12 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         wsc.addObserver(self, selector: #selector(screensWoke),
                         name: NSWorkspace.screensDidWakeNotification, object: nil)
         configureLabelTimer()
+    }
+
+    private func dashboardView() -> some View {
+        PopoverView()
+            .environmentObject(model)
+            .environmentObject(settings)
     }
 
     // MARK: - Label
@@ -122,6 +142,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     @objc private func screensSlept() {
         labelTimer?.invalidate()
         labelTimer = nil
+        if panel?.isVisible == true { closePanel() }
     }
 
     @objc private func screensWoke() {
@@ -129,9 +150,136 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         configureLabelTimer()
     }
 
-    // MARK: - Popover
+    // MARK: - Toggle
 
-    @objc private func togglePopover() {
+    @objc private func toggleUI() {
+        if glassAvailable {
+            if #available(macOS 26.0, *) {
+                panel?.isVisible == true ? closePanel() : showPanel()
+            }
+        } else {
+            togglePopover()
+        }
+    }
+
+    func debugShowPanel() {
+        toggleUI()
+    }
+
+    // MARK: - Liquid Glass panel (macOS 26+)
+
+    @available(macOS 26.0, *)
+    private func showPanel() {
+        if panel == nil { buildPanel() }
+        guard let panel, let host = panelHost,
+              let button = item.button, let buttonWindow = button.window else { return }
+
+        model.beginLiveUpdates()
+        host.layoutSubtreeIfNeeded()
+        let size = host.fittingSize
+        let anchor = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
+        let screen = buttonWindow.screen ?? NSScreen.main
+        var x = anchor.midX - size.width / 2
+        if let frame = screen?.visibleFrame {
+            x = min(max(x, frame.minX + 8), frame.maxX - size.width - 8)
+        }
+        panel.setFrame(NSRect(x: x, y: anchor.minY - 6 - size.height,
+                              width: size.width, height: size.height), display: false)
+
+        panel.alphaValue = 0
+        panel.makeKeyAndOrderFront(nil)
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.16
+            panel.animator().alphaValue = 1
+        }
+
+        // Click anywhere outside the app dismisses; Esc dismisses. (Debug
+        // screenshot mode keeps the panel up despite outside clicks.)
+        guard ProcessInfo.processInfo.environment["MJ_SHOW_PANEL"] == nil else { return }
+        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            Task { @MainActor in self?.closePanel() }
+        }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.keyCode == 53 {   // Esc
+                Task { @MainActor in self?.closePanel() }
+                return nil
+            }
+            return event
+        }
+    }
+
+    private func closePanel() {
+        guard let panel, panel.isVisible else { return }
+        model.endLiveUpdates()
+        if let m = clickMonitor { NSEvent.removeMonitor(m); clickMonitor = nil }
+        if let m = keyMonitor { NSEvent.removeMonitor(m); keyMonitor = nil }
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.12
+            panel.animator().alphaValue = 0
+        }, completionHandler: {
+            panel.orderOut(nil)
+        })
+    }
+
+    @available(macOS 26.0, *)
+    private func buildPanel() {
+        let host = NSHostingView(rootView: dashboardView())
+        host.autoresizingMask = [.width, .height]
+
+        let glass = NSGlassEffectView()
+        glass.style = .regular
+        glass.cornerRadius = 26
+        if #available(macOS 27.0, *) {
+            glass.effectIsInteractive = true
+        }
+        glass.contentView = host
+        glass.autoresizingMask = [.width, .height]
+
+        let p = GlassPanel(contentRect: NSRect(x: 0, y: 0, width: 360, height: 400),
+                           styleMask: [.borderless, .nonactivatingPanel],
+                           backing: .buffered, defer: false)
+        p.isOpaque = false
+        p.backgroundColor = .clear
+        p.hasShadow = true
+        p.level = .popUpMenu
+        p.collectionBehavior = [.transient, .fullScreenAuxiliary, .ignoresCycle]
+        p.isMovable = false
+        p.hidesOnDeactivate = false
+        p.isReleasedWhenClosed = false
+        p.animationBehavior = .none
+        glass.frame = p.contentLayoutRect
+        host.frame = glass.bounds
+        p.contentView = glass
+
+        panel = p
+        panelHost = host
+    }
+
+    /// Re-fit the panel to its content, keeping the top edge pinned under
+    /// the menu bar.
+    private func updatePanelFrame() {
+        guard let panel, panel.isVisible, let host = panelHost else { return }
+        host.layoutSubtreeIfNeeded()
+        let size = host.fittingSize
+        guard abs(size.height - panel.frame.height) > 0.5 else { return }
+        var frame = panel.frame
+        frame.origin.y = frame.maxY - size.height
+        frame.size = size
+        panel.setFrame(frame, display: true)
+    }
+
+    // MARK: - NSPopover fallback (pre-macOS 26)
+
+    private func togglePopover() {
+        if popover == nil {
+            let p = NSPopover()
+            p.behavior = .transient
+            p.animates = true
+            p.delegate = self
+            p.contentViewController = NSHostingController(rootView: dashboardView())
+            popover = p
+        }
+        guard let popover else { return }
         if popover.isShown {
             popover.performClose(nil)
         } else if let button = item.button {
