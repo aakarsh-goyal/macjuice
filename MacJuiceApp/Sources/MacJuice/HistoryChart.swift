@@ -21,11 +21,70 @@ struct HistoryChart: View {
         }
     }
 
-    private var usable: [(date: Date, value: Double)] {
+    private var usable: [(date: Date, value: Double, point: HistoryPoint)] {
         points.compactMap { p in
             guard let v = value(of: p) else { return nil }
-            return (Date(timeIntervalSince1970: TimeInterval(p.ts)), v)
+            return (Date(timeIntervalSince1970: TimeInterval(p.ts)), v, p)
         }
+    }
+
+    // MARK: - Power-state coloring (charge metric)
+
+    /// Green while healthy, amber while Low Power Mode was active, red once
+    /// the charge was at or below 20% — matching the battery glyph's rules.
+    private func stateColor(_ p: HistoryPoint) -> Color {
+        if let c = p.chargePct, c <= 20 { return Theme.critical }
+        if p.lowPower { return Theme.warn }
+        return Theme.charge
+    }
+
+    private func dotColor(_ p: HistoryPoint) -> Color {
+        metric == .charge ? stateColor(p) : accent
+    }
+
+    /// Hard-stop gradient over the data's time span so each stretch of the
+    /// line wears the power state it was recorded in.
+    private var chargeStops: [Gradient.Stop] {
+        let pts = usable
+        guard let f = pts.first, let l = pts.last, l.date > f.date else {
+            return [Gradient.Stop(color: accent, location: 0),
+                    Gradient.Stop(color: accent, location: 1)]
+        }
+        let span = l.date.timeIntervalSince(f.date)
+        var stops: [Gradient.Stop] = []
+        var prev = stateColor(pts[0].point)
+        stops.append(Gradient.Stop(color: prev, location: 0))
+        for i in 1..<pts.count {
+            let c = stateColor(pts[i].point)
+            if c != prev {
+                let mid = (pts[i - 1].date.timeIntervalSince(f.date)
+                    + pts[i].date.timeIntervalSince(f.date)) / 2 / span
+                stops.append(Gradient.Stop(color: prev, location: mid))
+                stops.append(Gradient.Stop(color: c, location: mid))
+                prev = c
+            }
+        }
+        stops.append(Gradient.Stop(color: prev, location: 1))
+        return stops
+    }
+
+    private var lineStyle: AnyShapeStyle {
+        guard metric == .charge else { return AnyShapeStyle(accent) }
+        return AnyShapeStyle(LinearGradient(stops: chargeStops,
+                                            startPoint: .leading, endPoint: .trailing))
+    }
+
+    private var areaStyle: AnyShapeStyle {
+        guard metric == .charge else {
+            return AnyShapeStyle(
+                LinearGradient(colors: [accent.opacity(0.16), accent.opacity(0.02)],
+                               startPoint: .top, endPoint: .bottom))
+        }
+        let washed = chargeStops.map {
+            Gradient.Stop(color: $0.color.opacity(0.13), location: $0.location)
+        }
+        return AnyShapeStyle(LinearGradient(stops: washed,
+                                            startPoint: .leading, endPoint: .trailing))
     }
 
     var body: some View {
@@ -35,7 +94,7 @@ struct HistoryChart: View {
                 .foregroundStyle(.tertiary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(.quaternary.opacity(0.25),
-                            in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         } else {
             chart
         }
@@ -59,13 +118,11 @@ struct HistoryChart: View {
                 AreaMark(x: .value("Time", p.date),
                          yStart: .value("Base", areaBase),
                          yEnd: .value(metric.rawValue, p.value))
-                    .foregroundStyle(
-                        LinearGradient(colors: [accent.opacity(0.16), accent.opacity(0.02)],
-                                       startPoint: .top, endPoint: .bottom))
+                    .foregroundStyle(areaStyle)
                     .interpolationMethod(.monotone)
                 LineMark(x: .value("Time", p.date),
                          y: .value(metric.rawValue, p.value))
-                    .foregroundStyle(accent)
+                    .foregroundStyle(lineStyle)
                     .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
                     .interpolationMethod(.monotone)
             }
@@ -75,7 +132,7 @@ struct HistoryChart: View {
                     .foregroundStyle(surface)
                 PointMark(x: .value("Time", last.date), y: .value(metric.rawValue, last.value))
                     .symbolSize(52)
-                    .foregroundStyle(accent)
+                    .foregroundStyle(dotColor(last.point))
             }
             if let h = hovered, let v = value(of: h) {
                 RuleMark(x: .value("Hover", Date(timeIntervalSince1970: TimeInterval(h.ts))))
@@ -88,7 +145,7 @@ struct HistoryChart: View {
                 PointMark(x: .value("Hover", Date(timeIntervalSince1970: TimeInterval(h.ts))),
                           y: .value(metric.rawValue, v))
                     .symbolSize(52)
-                    .foregroundStyle(accent)
+                    .foregroundStyle(dotColor(h))
             }
         }
         .chartXScale(domain: xDomain)
@@ -144,12 +201,12 @@ struct HistoryChart: View {
         }
         .overlay(alignment: .topLeading) {
             if let h = hovered, let v = value(of: h) {
-                Text("\(readoutTime(h.ts))  ·  \(yLabel(v, precise: true))")
+                Text("\(readoutTime(h.ts))  ·  \(yLabel(v, precise: true))\(h.lowPower && metric == .charge ? "  ·  Low Power" : "")")
                     .font(.system(size: 10, weight: .medium))
                     .monospacedDigit()
-                    .padding(.horizontal, 6)
+                    .padding(.horizontal, 7)
                     .padding(.vertical, 3)
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    .background(.thinMaterial, in: Capsule())
                     .padding(.leading, 2)
             }
         }

@@ -80,7 +80,8 @@ private struct BatteryGlyph: View {
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .strokeBorder(.tertiary, lineWidth: 1.5)
                     .frame(width: 46, height: 23)
-                RoundedRectangle(cornerRadius: 4.5, style: .continuous)
+                // Concentric with the 7pt shell at 3pt inset: 7 − 3 = 4.
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(Theme.batteryTone(pct: pct, onAC: onAC, lowPower: lowPower).gradient)
                     .frame(width: max(4, 40 * (pct ?? 0) / 100), height: 17)
                     .padding(.leading, 3)
@@ -181,8 +182,9 @@ private struct StatTile: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 9)
         .padding(.vertical, 7)
+        // Concentric with the 26pt panel at 14pt inset: 26 − 14 = 12.
         .background(.quaternary.opacity(0.45),
-                    in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
@@ -197,11 +199,11 @@ private struct ChartSection: View {
                 if #available(macOS 26.0, *) {
                     GlassSegmentedControl(selection: $model.chartMetric,
                                           items: ChartMetric.allCases,
-                                          segmentWidth: 56)
+                                          segmentWidth: 55)
                     Spacer(minLength: 6)
                     GlassSegmentedControl(selection: $model.chartRange,
                                           items: ChartRange.allCases,
-                                          segmentWidth: 38)
+                                          segmentWidth: 37)
                 } else {
                     Picker("", selection: $model.chartMetric) {
                         ForEach(ChartMetric.allCases) { Text($0.rawValue).tag($0) }

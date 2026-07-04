@@ -43,6 +43,8 @@ where T: Hashable & Identifiable & RawRepresentable, T.RawValue == String {
         }
         .animation(.snappy(duration: 0.32), value: selectedIndex)
         .focusEffectDisabled()
+        // 2pt inset keeps the thumb concentric inside the track capsule.
+        .padding(2)
         .background(.quaternary.opacity(0.25), in: Capsule())
     }
 }

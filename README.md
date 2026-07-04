@@ -43,7 +43,9 @@ click:
   **two health numbers** (Apple's smoothed % *and* the raw mAh ratio, which can
   read >100% on a fresh battery), cycle count, current/full charge in mAh
 - History charts — charge %, battery watts, or **battery health** over
-  **24H / 7D / 30D / ALL**, with plug/unplug markers and hover scrubbing
+  **24H / 7D / 30D / ALL**, with plug/unplug markers and hover scrubbing.
+  The charge line wears its power state: green normally, **amber while Low
+  Power Mode was on, red below 20%** — one glance tells the whole story
 - Discharge sessions ("On battery 2:04 · −11% · 5.3%/h"), time since full
   charge, and estimated full-charge runtime from your actual recent use
 - Long-term capacity trend (mAh/month) once two weeks of data accumulate

@@ -9,6 +9,7 @@ struct HistoryPoint {
     let watts: Double?
     let systemWatts: Double?
     let healthPct: Double?
+    let lowPower: Bool
 }
 
 struct SampleRow {
@@ -27,10 +28,11 @@ struct EventRow {
 /// Python collector, so existing history carries straight over. Every public
 /// method serializes on an internal queue; call from any thread.
 final class Store: @unchecked Sendable {
-    static let defaultPath = FileManager.default
-        .homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/macjuice/battery.db")
-        .path
+    static let defaultPath = ProcessInfo.processInfo.environment["MACJUICE_DB"]
+        ?? FileManager.default
+            .homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/macjuice/battery.db")
+            .path
 
     private let queue = DispatchQueue(label: "com.macjuice.db", qos: .utility)
     private var db: OpaquePointer?
@@ -62,8 +64,12 @@ final class Store: @unchecked Sendable {
                 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
                 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
                 """)
-            if !columns(of: "samples").contains("system_watts") {
+            let existing = columns(of: "samples")
+            if !existing.contains("system_watts") {
                 exec("ALTER TABLE samples ADD COLUMN system_watts REAL")
+            }
+            if !existing.contains("low_power") {
+                exec("ALTER TABLE samples ADD COLUMN low_power INTEGER")
             }
         }
     }
@@ -78,8 +84,9 @@ final class Store: @unchecked Sendable {
                 INSERT OR IGNORE INTO samples
                   (ts, source, charge_pct, current_mah, max_mah, design_mah, cycle_count,
                    max_capacity_reported_pct, condition, temp_c, voltage_v, amperage_ma,
-                   watts, charging, adapter_watts, time_remaining_min, serial, model, system_watts)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                   watts, charging, adapter_watts, time_remaining_min, serial, model,
+                   system_watts, low_power)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """
             withStatement(sql) { st in
                 bind(st, 1, s.ts)
@@ -101,6 +108,7 @@ final class Store: @unchecked Sendable {
                 bind(st, 17, s.serial)
                 bind(st, 18, model)
                 bind(st, 19, s.systemWatts)
+                bind(st, 20, s.lowPowerMode ? 1 : 0)
                 sqlite3_step(st)
             }
         }
@@ -139,7 +147,8 @@ final class Store: @unchecked Sendable {
             // The 0–100 clamp guards against historic backfill parser junk.
             let sql = """
                 SELECT (ts/?1)*?1 AS t, AVG(charge_pct), AVG(watts), AVG(system_watts),
-                       AVG(CASE WHEN design_mah > 0 THEN max_mah * 100.0 / design_mah END)
+                       AVG(CASE WHEN design_mah > 0 THEN max_mah * 100.0 / design_mah END),
+                       MAX(low_power)
                 FROM samples WHERE ts >= ?2 AND charge_pct BETWEEN 0 AND 100
                 GROUP BY t ORDER BY t
                 """
@@ -151,7 +160,8 @@ final class Store: @unchecked Sendable {
                                             chargePct: colDouble(st, 1),
                                             watts: colDouble(st, 2),
                                             systemWatts: colDouble(st, 3),
-                                            healthPct: colDouble(st, 4)))
+                                            healthPct: colDouble(st, 4),
+                                            lowPower: (colInt(st, 5) ?? 0) != 0))
                 }
             }
             return out
