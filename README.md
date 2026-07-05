@@ -64,10 +64,24 @@ same menu) when you want benchmark-grade data for a specific workload.
 
 ### About the Low Power Mode switch
 
-macOS has no public API that lets a third-party app *set* Low Power Mode
-(reading it is free), so the switch runs `pmset -a lowpowermode` as root —
-you get the standard macOS administrator-password prompt each time. If you
-want it silent, allow exactly those two commands without a password:
+macOS gives third-party apps no public API to *set* Low Power Mode (reading
+it is free), so MacJuice tries three routes, quietest first:
+
+1. **Passwordless sudo** — if a sudoers rule allows exactly
+   `pmset -a lowpowermode` (snippet below), it's used silently.
+2. **Your Shortcuts library** — the Shortcuts app can switch Low Power Mode
+   with **no password** (Apple's own privileged action), and this is the
+   everyday path. If any shortcut whose name contains "low power" toggles
+   it, MacJuice runs that — silent, ~0.5 s once the Shortcuts daemon is
+   warm. Don't have one? Two clicks: open Shortcuts, create a new shortcut
+   with the single action **Set Low Power Mode**, change *Turn* to
+   **Toggle**, name it `Low Power Mode`. Prefer another name?
+   `defaults write com.macjuice.app lpmShortcut -string "Your Name"`.
+3. **The standard admin-password dialog** — last resort when neither of the
+   above exists. Cancelling changes nothing; MacJuice re-reads the real
+   state either way.
+
+The optional sudoers rule, scoped to exactly the two commands MacJuice runs:
 
 ```sh
 sudo tee /etc/sudoers.d/macjuice-lpm >/dev/null <<EOF
@@ -75,9 +89,6 @@ $(whoami) ALL=(root) NOPASSWD: /usr/bin/pmset -a lowpowermode 1, /usr/bin/pmset 
 EOF
 sudo chmod 440 /etc/sudoers.d/macjuice-lpm && sudo visudo -c
 ```
-
-MacJuice always tries the silent path first and only prompts if it isn't
-allowed. Cancelling the prompt changes nothing.
 
 ## Built to sip power
 
@@ -152,6 +163,8 @@ carries over untouched. Query it with plain `sqlite3` whenever you like.
 ```sh
 /Applications/MacJuice.app/Contents/MacOS/MacJuice --sample         # one reading as JSON
 /Applications/MacJuice.app/Contents/MacOS/MacJuice --login-status   # login item state
+/Applications/MacJuice.app/Contents/MacOS/MacJuice --set-lpm on     # scriptable LPM switch (on|off),
+                                                                    # same silent route chain as the menu
 ```
 
 ## Uninstall

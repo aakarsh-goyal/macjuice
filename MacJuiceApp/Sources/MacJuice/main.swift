@@ -40,6 +40,14 @@ if arguments.contains("--sample") {
     FileHandle.standardError.write(Data("no battery found\n".utf8))
     exit(1)
 }
+if let i = arguments.firstIndex(of: "--set-lpm"), arguments.count > i + 1 {
+    let value = arguments[i + 1].lowercased()
+    guard value == "on" || value == "off" else {
+        FileHandle.standardError.write(Data("usage: MacJuice --set-lpm on|off\n".utf8))
+        exit(2)
+    }
+    exit(PowerMode.apply(value == "on") ? 0 : 1)
+}
 if arguments.contains("--login-status") {
     let status = SMAppService.mainApp.status
     let name: String
