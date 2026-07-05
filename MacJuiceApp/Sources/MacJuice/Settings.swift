@@ -2,7 +2,7 @@ import Foundation
 import ServiceManagement
 
 enum LabelStyle: String, CaseIterable, Identifiable {
-    case icon, percent, watts
+    case icon, percent, watts, both
     var id: String { rawValue }
 
     var title: String {
@@ -10,8 +10,13 @@ enum LabelStyle: String, CaseIterable, Identifiable {
         case .icon: "Icon only"
         case .percent: "Percentage"
         case .watts: "Power draw"
+        case .both: "Percentage | Power"
         }
     }
+
+    /// Styles whose number drifts without a power-source notification and
+    /// therefore need the slow coalesced label refresh.
+    var showsWatts: Bool { self == .watts || self == .both }
 }
 
 @MainActor

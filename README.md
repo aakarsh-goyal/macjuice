@@ -24,7 +24,7 @@
 ## What you see
 
 **In the menu bar** — a bolt with a live number (configurable: icon only /
-percentage / watts):
+percentage / watts / both, as in "84% | 6.4W"):
 
 - on battery: system power draw ("6.6W")
 - on AC: watts flowing into the battery ("+18W")

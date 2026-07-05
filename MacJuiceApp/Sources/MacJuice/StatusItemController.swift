@@ -112,17 +112,27 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         case .icon:
             return ""
         case .percent:
-            guard let pct = snap.chargePct else { return "" }
-            return "\(Int(pct.rounded()))%"
+            return percentText(snap)
         case .watts:
-            // On AC the interesting number is what's flowing into the battery;
-            // on battery it's what the system is draining.
-            if snap.onAC, let b = snap.watts, b > 0.05 {
-                return "+" + Fmt.wattsShort(b)
-            }
-            guard let w = snap.systemWatts ?? snap.watts.map({ abs($0) }) else { return "" }
-            return Fmt.wattsShort(w)
+            return wattsText(snap)
+        case .both:
+            let parts = [percentText(snap), wattsText(snap)].filter { !$0.isEmpty }
+            return parts.joined(separator: " | ")
         }
+    }
+
+    private func percentText(_ snap: BatterySnapshot) -> String {
+        snap.chargePct.map { "\(Int($0.rounded()))%" } ?? ""
+    }
+
+    /// On AC the interesting number is what's flowing into the battery;
+    /// on battery it's what the system is draining.
+    private func wattsText(_ snap: BatterySnapshot) -> String {
+        if snap.onAC, let b = snap.watts, b > 0.05 {
+            return "+" + Fmt.wattsShort(b)
+        }
+        guard let w = snap.systemWatts ?? snap.watts.map({ abs($0) }) else { return "" }
+        return Fmt.wattsShort(w)
     }
 
     /// Watts drift without a power-source notification, so that style gets a
@@ -131,7 +141,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private func configureLabelTimer() {
         labelTimer?.invalidate()
         labelTimer = nil
-        guard settings.labelStyle == .watts else { return }
+        guard settings.labelStyle.showsWatts else { return }
         let t = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self, !self.model.popoverIsLive else { return }
