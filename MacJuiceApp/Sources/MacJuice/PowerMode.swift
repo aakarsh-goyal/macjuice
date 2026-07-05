@@ -30,7 +30,11 @@ enum PowerMode {
 
     /// Blocking route chain; also the `--set-lpm` CLI entry point.
     static func apply(_ on: Bool) -> Bool {
-        runSudo(on) || runShortcut(on) || runWithAdminPrompt(on)
+        // Already there? Done. Vital for the CLI: the shortcut route is
+        // usually a *toggle*, which would flip an already-correct state the
+        // wrong way and then bounce into the password dialog.
+        if systemState() == on { return true }
+        return runSudo(on) || runShortcut(on) || runWithAdminPrompt(on)
     }
 
     // MARK: - Routes
