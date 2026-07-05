@@ -21,6 +21,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private var cancellables = Set<AnyCancellable>()
     private var labelTimer: Timer?
     private var lastTitle = "\u{0}"   // sentinel so the first update always applies
+    private var lastCritical = false
 
     private var popover: NSPopover?
     private var panel: NSPanel?
@@ -91,19 +92,29 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private func refreshLabel(_ snap: BatterySnapshot?) {
         guard let button = item.button else { return }
         let title = labelText(snap)
-        guard title != lastTitle else { return }
+        let critical = (snap?.chargePct ?? 100) <= 10 && !(snap?.onAC ?? false)
+        guard title != lastTitle || critical != lastCritical else { return }
         lastTitle = title
+        lastCritical = critical
         guard !title.isEmpty else {
-            button.attributedTitle = NSAttributedString(string: "")
+            button.title = ""
             return
         }
-        let critical = (snap?.chargePct ?? 100) <= 10 && !(snap?.onAC ?? false)
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium),
-            .foregroundColor: critical ? NSColor.systemRed : NSColor.labelColor,
-            .baselineOffset: 0.5,
-        ]
-        button.attributedTitle = NSAttributedString(string: " " + title, attributes: attrs)
+        // A plain title lets AppKit own the color completely — white on dark
+        // menu bars, black on light ones, dimmed on the inactive display's
+        // bar. Any explicit color (even labelColor) opts out of all three,
+        // so only critical red uses an attributed title: standing out
+        // everywhere is the point.
+        if critical {
+            button.attributedTitle = NSAttributedString(string: " " + title, attributes: [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium),
+                .foregroundColor: NSColor.systemRed,
+                .baselineOffset: 0.5,
+            ])
+        } else {
+            button.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
+            button.title = " " + title
+        }
     }
 
     private func labelText(_ snap: BatterySnapshot?) -> String {
