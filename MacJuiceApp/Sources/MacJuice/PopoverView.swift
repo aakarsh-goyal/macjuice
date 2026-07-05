@@ -330,6 +330,8 @@ private struct FooterBar: View {
             }
             Spacer()
             Menu {
+                Toggle("Low Power Mode", isOn: lowPowerBinding)
+                Divider()
                 Toggle("Keep on Top", isOn: $settings.pinPanel)
                 Toggle("Launch at Login", isOn: $settings.launchAtLogin)
                 Picker("Menu Bar Shows", selection: $settings.labelStyle) {
@@ -358,6 +360,21 @@ private struct FooterBar: View {
             .focusEffectDisabled()
             .fixedSize()
         }
+    }
+
+    /// Setting Low Power Mode goes through pmset-as-root (no public API), so
+    /// the set side hands off to PowerMode and lets the next snapshot confirm
+    /// the real state — a cancelled password dialog simply changes nothing.
+    private var lowPowerBinding: Binding<Bool> {
+        let model = self.model
+        return Binding(
+            get: { model.live?.lowPowerMode ?? ProcessInfo.processInfo.isLowPowerModeEnabled },
+            set: { on in
+                PowerMode.setLowPower(on) { ok in
+                    if ok { model.updateLive() }
+                }
+            }
+        )
     }
 
     private var hiResTitle: String {

@@ -56,11 +56,28 @@ click:
 - Fully charged — an unplug reminder
 - Battery hot — sustained >40 °C
 
-**In the gear menu** — keep on top, launch at login, menu bar label style,
-alert toggles, **Copy Stats** (plaintext summary to the clipboard), **Export
-History as CSV**, and **high-resolution logging**: one sample every 10 s for
-the next hour (stop it early from the same menu) when you want
-benchmark-grade data for a specific workload.
+**In the gear menu** — a **Low Power Mode switch**, keep on top, launch at
+login, menu bar label style, alert toggles, **Copy Stats** (plaintext summary
+to the clipboard), **Export History as CSV**, and **high-resolution
+logging**: one sample every 10 s for the next hour (stop it early from the
+same menu) when you want benchmark-grade data for a specific workload.
+
+### About the Low Power Mode switch
+
+macOS has no public API that lets a third-party app *set* Low Power Mode
+(reading it is free), so the switch runs `pmset -a lowpowermode` as root —
+you get the standard macOS administrator-password prompt each time. If you
+want it silent, allow exactly those two commands without a password:
+
+```sh
+sudo tee /etc/sudoers.d/macjuice-lpm >/dev/null <<EOF
+$(whoami) ALL=(root) NOPASSWD: /usr/bin/pmset -a lowpowermode 1, /usr/bin/pmset -a lowpowermode 0
+EOF
+sudo chmod 440 /etc/sudoers.d/macjuice-lpm && sudo visudo -c
+```
+
+MacJuice always tries the silent path first and only prompts if it isn't
+allowed. Cancelling the prompt changes nothing.
 
 ## Built to sip power
 
