@@ -113,9 +113,10 @@ private struct ChargeEffectView: View {
         GeometryReader { geo in
             let edge = ScreenEdgeShape(notch: notch, corner: corner)
             ZStack(alignment: .top) {
-                // A whisper of dim gives the bloom contrast on any content —
-                // additive green alone disappears over white windows.
-                Color.black.opacity(0.16)
+                // An edge vignette (not a flat dim — a sudden brightness drop
+                // across the whole screen is jarring) gives the bloom contrast
+                // on light content while the center never changes.
+                edge.stroke(Color.black.opacity(0.45), lineWidth: 44).blur(radius: 34)
                 // A bloom, not a line: wide soft halos bleeding inward under
                 // progressively tighter, brighter cores.
                 edge.stroke(green.opacity(0.42), lineWidth: 26).blur(radius: 24)
@@ -137,21 +138,26 @@ private struct ChargeEffectView: View {
     @ViewBuilder
     private func pill(in size: CGSize) -> some View {
         let clipTop = notch?.height ?? 0
-        VStack(spacing: 1) {
-            Text(title)
-                .font(.system(size: 12.5, weight: .semibold))
+        HStack(spacing: 9) {
+            Image(systemName: "macbook.gen2")
+                .font(.system(size: 17, weight: .regular))
                 .foregroundStyle(.primary)
-            HStack(spacing: 5) {
-                if let pct {
-                    Text("\(pct)%")
-                        .font(.system(size: 11, weight: .medium))
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
+            VStack(spacing: 1) {
+                Text(title)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(.primary)
+                HStack(spacing: 5) {
+                    if let pct {
+                        Text("\(pct)%")
+                            .font(.system(size: 11, weight: .medium))
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                    MiniBattery(pct: pct ?? 100)
                 }
-                MiniBattery(pct: pct ?? 100)
             }
         }
-        .padding(.horizontal, 21)
+        .padding(.horizontal, 18)
         .padding(.top, 6)
         .padding(.bottom, 7)
         .background(.regularMaterial, in: Capsule())
