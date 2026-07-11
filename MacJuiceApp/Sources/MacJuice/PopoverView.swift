@@ -337,6 +337,7 @@ private struct FooterBar: View {
                 Picker("Menu Bar Shows", selection: $settings.labelStyle) {
                     ForEach(LabelStyle.allCases) { Text($0.title).tag($0) }
                 }
+                Toggle("Plug-In Effect", isOn: $settings.chargeEffect)
                 Menu("Alerts") {
                     Toggle("Low Battery (20% / 10%)", isOn: $settings.notifyLowBattery)
                     Toggle("Fully Charged", isOn: $settings.notifyFullyCharged)

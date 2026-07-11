@@ -37,6 +37,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         recorder.start()
         Settings.shared.autoRegisterLoginItemIfNeeded()
 
+        if ProcessInfo.processInfo.environment["MJ_DEMO_GLOW"] != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                if let snap = self?.model.live ?? BatteryReader.read() {
+                    let title = self?.model.store.meta("model_name") ?? "MacBook"
+                    ChargeEffect.shared.play(snap, title: title)
+                }
+            }
+        }
         if ProcessInfo.processInfo.environment["MJ_SHOW_PANEL"] != nil {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
                 self?.statusController.debugShowPanel()

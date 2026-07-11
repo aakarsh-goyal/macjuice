@@ -50,6 +50,15 @@ click:
   charge, and estimated full-charge runtime from your actual recent use
 - Long-term capacity trend (mAh/month) once two weeks of data accumulate
 
+**When the charger clicks in** — an Apple Pencil-style moment: the display
+edge blooms green (tracing around the notch on Macs that have one) while a
+capsule slides out from under the notch — device name, charge %, a tiny
+green battery — floats for a beat, and retracts. Three seconds of overlay,
+then gone; no extra permissions, no idle cost. Toggle: gear → **Plug-In
+Effect**. If the glow's corners don't hug your panel's exactly:
+`defaults write com.macjuice.app glowCornerRadius -float 30` (any value,
+live).
+
 **Alerts** (native notifications, each toggleable in the gear menu):
 
 - Low battery at 20% and 10%, with the time remaining

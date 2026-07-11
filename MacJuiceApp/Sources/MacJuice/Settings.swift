@@ -33,6 +33,11 @@ final class Settings: ObservableObject {
         didSet { UserDefaults.standard.set(pinPanel, forKey: "pinPanel") }
     }
 
+    /// The plug-in glow + notch pill moment.
+    @Published var chargeEffect: Bool {
+        didSet { UserDefaults.standard.set(chargeEffect, forKey: "chargeEffect") }
+    }
+
     @Published var notifyLowBattery: Bool {
         didSet { UserDefaults.standard.set(notifyLowBattery, forKey: "notifyLowBattery") }
     }
@@ -67,6 +72,7 @@ final class Settings: ObservableObject {
             UserDefaults.standard.object(forKey: key) == nil
                 ? true : UserDefaults.standard.bool(forKey: key)
         }
+        chargeEffect = flag("chargeEffect")
         notifyLowBattery = flag("notifyLowBattery")
         notifyFullyCharged = flag("notifyFullyCharged")
         notifyHighTemp = flag("notifyHighTemp")

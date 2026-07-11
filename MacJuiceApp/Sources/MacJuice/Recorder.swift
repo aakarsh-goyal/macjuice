@@ -123,6 +123,9 @@ final class Recorder {
     private func record(_ snap: BatterySnapshot, source: String = "live") {
         for event in transitions(to: snap) {
             store.insertEvent(ts: snap.ts, type: event)
+            if event == "plug_in", Settings.shared.chargeEffect {
+                ChargeEffect.shared.play(snap, title: cachedModelName ?? "MacBook")
+            }
         }
         store.insert(snap, model: cachedModelName, source: source)
         prevPct = snap.chargePct
