@@ -50,14 +50,20 @@ click:
   charge, and estimated full-charge runtime from your actual recent use
 - Long-term capacity trend (mAh/month) once two weeks of data accumulate
 
-**When the charger clicks in** — an Apple Pencil-style moment: the display
-edge blooms green (tracing around the notch on Macs that have one) while a
-capsule slides out from under the notch — device name, charge %, a tiny
-green battery — floats for a beat, and retracts. Three seconds of overlay,
-then gone; no extra permissions, no idle cost. Toggle: gear → **Plug-In
-Effect**. If the glow's corners don't hug your panel's exactly:
-`defaults write com.macjuice.app glowCornerRadius -float 30` (any value,
-live).
+**Power moments** — Apple Pencil-style: the display edge blooms while a
+Liquid Glass capsule slides out from under the notch — MacBook glyph, device
+name, charge %, a battery that wears the state tone (with a charging bolt on
+AC) — floats a beat, and retracts. The bloom traces around the notch and
+wears the battery's state color:
+
+- **green** when the charger clicks in
+- **yellow** the moment Low Power Mode turns on
+- **red** when the battery dips below 20% on battery power
+
+Three seconds of overlay, then gone; no extra permissions, no idle cost.
+Toggle: gear → **Plug-In Effect**. If the glow's corners don't hug your
+panel's exactly: `defaults write com.macjuice.app glowCornerRadius -float 30`
+(any value, live).
 
 **Alerts** (native notifications, each toggleable in the gear menu):
 
@@ -67,9 +73,9 @@ live).
 
 **In the gear menu** — a **Low Power Mode switch**, keep on top, launch at
 login, menu bar label style, alert toggles, **Copy Stats** (plaintext summary
-to the clipboard), **Export History as CSV**, and **high-resolution
-logging**: one sample every 10 s for the next hour (stop it early from the
-same menu) when you want benchmark-grade data for a specific workload.
+to the clipboard), **Export History as CSV**, and **Verbose Logging**: one sample every 10 s for the
+next hour (stop it early from the same menu) when you want benchmark-grade
+data for a specific workload.
 
 ### About the Low Power Mode switch
 
@@ -110,7 +116,7 @@ and nothing polls faster than it has to:
 | Menu bar number | pushed by macOS power events (every % step, plug/unplug), plus a coalesced 30 s refresh while showing watts — paused when the display sleeps |
 | History sample → SQLite | every ~120 s via a system-coalesced background activity, **plus instantly** on plug/unplug/full-charge so events carry exact timestamps |
 | Popover while open | every 2 s |
-| High-res logging (opt-in) | every 10 s, auto-stops after 1 hour |
+| Verbose logging (opt-in) | every 10 s, auto-stops after 1 hour |
 | Popover closed | nothing |
 
 No power assertions — the Mac sleeps exactly as it would without MacJuice.

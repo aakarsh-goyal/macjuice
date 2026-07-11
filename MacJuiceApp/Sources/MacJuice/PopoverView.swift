@@ -381,9 +381,9 @@ private struct FooterBar: View {
     private var hiResTitle: String {
         if let until = model.hiResUntil {
             let mins = max(Int(until.timeIntervalSinceNow / 60), 0)
-            return "Stop High-Res Logging (\(mins) min left)"
+            return "Stop Verbose Logging (\(mins) min left)"
         }
-        return "Log Every 10 s for 1 Hour"
+        return "Verbose Logging"
     }
 
     private func copyStats() {

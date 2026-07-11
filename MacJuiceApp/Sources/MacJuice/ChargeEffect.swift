@@ -40,10 +40,20 @@ final class ChargeEffect {
         let stored = UserDefaults.standard.double(forKey: "glowCornerRadius")
         let radius = stored > 0 ? CGFloat(stored) : (notch != nil ? 26 : 14)
 
+        // The bloom wears the battery's state color: red when low, Low Power
+        // Mode yellow, otherwise charging green — same rule as the pill glyph.
+        let tone: NSColor = {
+            if (snap.chargePct ?? 100) <= 20 { return .systemRed }
+            if snap.lowPowerMode { return .systemYellow }
+            return .systemGreen
+        }()
         let model = EffectModel()
         let view = ChargeEffectView(model: model, notch: notch, corner: radius,
                                     title: title,
-                                    pct: snap.chargePct.map { Int($0.rounded()) })
+                                    pct: snap.chargePct.map { Int($0.rounded()) },
+                                    lowPower: snap.lowPowerMode,
+                                    onAC: snap.onAC,
+                                    tone: Color(nsColor: tone))
         let w = NSWindow(contentRect: screen.frame, styleMask: .borderless,
                          backing: .buffered, defer: false)
         w.isOpaque = false
@@ -106,8 +116,9 @@ private struct ChargeEffectView: View {
     let corner: CGFloat
     let title: String
     let pct: Int?
-
-    private var green: Color { Color(nsColor: .systemGreen) }
+    let lowPower: Bool
+    let onAC: Bool
+    let tone: Color
 
     var body: some View {
         GeometryReader { geo in
@@ -119,11 +130,11 @@ private struct ChargeEffectView: View {
                 edge.stroke(Color.black.opacity(0.45), lineWidth: 44).blur(radius: 34)
                 // A bloom, not a line: wide soft halos bleeding inward under
                 // progressively tighter, brighter cores.
-                edge.stroke(green.opacity(0.42), lineWidth: 26).blur(radius: 24)
-                edge.stroke(green.opacity(0.62), lineWidth: 12).blur(radius: 10)
-                edge.stroke(green.opacity(0.95), lineWidth: 4).blur(radius: 3)
-                edge.stroke(green, lineWidth: 1.8)
-                    .shadow(color: green, radius: 5)
+                edge.stroke(tone.opacity(0.42), lineWidth: 26).blur(radius: 24)
+                edge.stroke(tone.opacity(0.62), lineWidth: 12).blur(radius: 10)
+                edge.stroke(tone.opacity(0.95), lineWidth: 4).blur(radius: 3)
+                edge.stroke(tone, lineWidth: 1.8)
+                    .shadow(color: tone, radius: 5)
                 pill(in: geo.size)
             }
             .opacity(model.glow)
@@ -138,42 +149,64 @@ private struct ChargeEffectView: View {
     @ViewBuilder
     private func pill(in size: CGSize) -> some View {
         let clipTop = notch?.height ?? 0
-        HStack(spacing: 9) {
-            Image(systemName: "macbook.gen2")
-                .font(.system(size: 17, weight: .regular))
-                .foregroundStyle(.primary)
-            VStack(spacing: 1) {
-                Text(title)
-                    .font(.system(size: 12.5, weight: .semibold))
+        glassCapsule {
+            HStack(spacing: 9) {
+                Image(systemName: "macbook.gen2")
+                    .font(.system(size: 17, weight: .regular))
                     .foregroundStyle(.primary)
-                HStack(spacing: 5) {
-                    if let pct {
-                        Text("\(pct)%")
-                            .font(.system(size: 11, weight: .medium))
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
+                VStack(spacing: 1) {
+                    Text(title)
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    HStack(spacing: 5) {
+                        if let pct {
+                            Text("\(pct)%")
+                                .font(.system(size: 11, weight: .medium))
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                        }
+                        MiniBattery(pct: pct ?? 100, lowPower: lowPower, showBolt: onAC)
                     }
-                    MiniBattery(pct: pct ?? 100)
                 }
             }
+            .padding(.horizontal, 18)
+            .padding(.top, 6)
+            .padding(.bottom, 7)
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 6)
-        .padding(.bottom, 7)
-        .background(.regularMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(.primary.opacity(0.08), lineWidth: 0.5))
-        .shadow(color: .black.opacity(0.26), radius: 13, y: 5)
+        .shadow(color: .black.opacity(0.24), radius: 13, y: 5)
         .offset(y: model.pillOut ? 10 : -75)
         .frame(maxWidth: .infinity)
         .frame(height: 95, alignment: .top)
         .clipped()
         .offset(y: clipTop)
     }
+
+    /// Liquid Glass on macOS 26+ (real lensing of whatever is behind the
+    /// pill; the glass brings its own rim lighting, so no hairline stroke),
+    /// frosted material below.
+    @ViewBuilder
+    private func glassCapsule<C: View>(@ViewBuilder _ content: () -> C) -> some View {
+        if #available(macOS 26.0, *) {
+            content().glassEffect(.regular, in: Capsule())
+        } else {
+            content().background(.regularMaterial, in: Capsule())
+        }
+    }
 }
 
-/// The iOS-style battery glyph, 21 pt wide, filled green.
+/// The iOS-style battery glyph, 21 pt wide, filled in the battery's state
+/// tone — red when low, Low Power Mode yellow, otherwise charging green —
+/// with the system's white charging bolt over it.
 private struct MiniBattery: View {
     let pct: Int
+    let lowPower: Bool
+    let showBolt: Bool
+
+    private var tone: Color {
+        if pct <= 20 { return Color(nsColor: .systemRed) }
+        if lowPower { return Color(nsColor: .systemYellow) }
+        return Color(nsColor: .systemGreen)
+    }
 
     var body: some View {
         HStack(spacing: 1) {
@@ -182,9 +215,16 @@ private struct MiniBattery: View {
                     .strokeBorder(.secondary.opacity(0.6), lineWidth: 1)
                     .frame(width: 21, height: 11)
                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                    .fill(Color(nsColor: .systemGreen))
+                    .fill(tone)
                     .frame(width: max(2.5, 17 * CGFloat(pct) / 100), height: 7)
                     .padding(.leading, 2)
+                if showBolt {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.55), radius: 0.6, y: 0.4)
+                        .frame(width: 21)
+                }
             }
             RoundedRectangle(cornerRadius: 0.8)
                 .fill(.secondary.opacity(0.6))

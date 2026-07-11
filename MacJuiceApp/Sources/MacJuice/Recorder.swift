@@ -22,6 +22,11 @@ final class Recorder {
     private var prevPct: Double?
     private var prevCharging: Int?
     private var cachedModelName: String?
+    // Edge detectors for the state-glow moments (yellow on LPM-on, red on
+    // dipping below 20% on battery); seeded in start() so an already-low
+    // battery doesn't glow at launch.
+    private var wasLow = false
+    private var wasLPM = false
 
     init(store: Store, model: BatteryModel) {
         self.store = store
@@ -34,6 +39,8 @@ final class Recorder {
             prevCharging = last.charging
         }
         resolveModelName()
+        wasLPM = ProcessInfo.processInfo.isLowPowerModeEnabled
+        if let s = BatteryReader.read() { wasLow = isLow(s) }
         recordSample()
 
         let s = NSBackgroundActivityScheduler(identifier: "com.macjuice.app.sample")
@@ -65,7 +72,7 @@ final class Recorder {
         NotificationCenter.default.addObserver(
             forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main
         ) { [weak self] _ in
-            self?.model.updateLive()
+            Task { @MainActor in self?.powerStateChanged() }
         }
 
         model.hiResHandler = { [weak self] on in self?.setHiRes(on) }
@@ -99,10 +106,33 @@ final class Recorder {
         hiResTimer = t
     }
 
+    private func powerStateChanged() {
+        model.updateLive()
+        let lpm = ProcessInfo.processInfo.isLowPowerModeEnabled
+        if lpm, !wasLPM, Settings.shared.chargeEffect, let snap = model.live {
+            ChargeEffect.shared.play(snap, title: cachedModelName ?? "MacBook")
+        }
+        wasLPM = lpm
+    }
+
+    /// Red glow the moment the battery dips to 20% on battery power.
+    private func lowBatteryEffect(_ snap: BatterySnapshot) {
+        let low = isLow(snap)
+        if low, !wasLow, Settings.shared.chargeEffect {
+            ChargeEffect.shared.play(snap, title: cachedModelName ?? "MacBook")
+        }
+        wasLow = low
+    }
+
+    private func isLow(_ snap: BatterySnapshot) -> Bool {
+        (snap.chargePct ?? 100) <= 20 && !snap.onAC
+    }
+
     private func powerSourcesChanged() {
         guard let snap = BatteryReader.read() else { return }
         model.live = snap
         alerts.process(snap, settings: .shared)
+        lowBatteryEffect(snap)
         let charging = snap.onAC ? 1 : 0
         // A state transition gets persisted immediately so plug/unplug/full
         // events carry exact timestamps; plain percent ticks wait for the
@@ -116,6 +146,7 @@ final class Recorder {
         guard let snap = BatteryReader.read() else { return }
         model.live = snap
         alerts.process(snap, settings: .shared)
+        lowBatteryEffect(snap)
         record(snap)
         if model.popoverIsLive { model.reloadDerived() }
     }
