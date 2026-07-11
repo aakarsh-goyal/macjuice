@@ -61,9 +61,11 @@ wears the battery's state color:
 - **red** when the battery dips below 20% on battery power
 
 Three seconds of overlay, then gone; no extra permissions, no idle cost.
-Toggle: gear → **Plug-In Effect**. If the glow's corners don't hug your
-panel's exactly: `defaults write com.macjuice.app glowCornerRadius -float 30`
-(any value, live).
+The glow and the pill are independent toggles — gear → **Power Moments** →
+Edge Glow / Battery Pill — for people who want the information without the
+light show, or the reverse. If the glow's corners don't hug your panel's
+exactly: `defaults write com.macjuice.app glowCornerRadius -float 30` (any
+value, live).
 
 **Alerts** (native notifications, each toggleable in the gear menu):
 

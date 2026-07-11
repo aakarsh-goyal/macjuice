@@ -33,9 +33,13 @@ final class Settings: ObservableObject {
         didSet { UserDefaults.standard.set(pinPanel, forKey: "pinPanel") }
     }
 
-    /// The plug-in glow + notch pill moment.
-    @Published var chargeEffect: Bool {
-        didSet { UserDefaults.standard.set(chargeEffect, forKey: "chargeEffect") }
+    /// The power-moment halves, independently toggleable: some people want
+    /// the pill without the light show, or the reverse.
+    @Published var effectGlow: Bool {
+        didSet { UserDefaults.standard.set(effectGlow, forKey: "effectGlow") }
+    }
+    @Published var effectPill: Bool {
+        didSet { UserDefaults.standard.set(effectPill, forKey: "effectPill") }
     }
 
     @Published var notifyLowBattery: Bool {
@@ -72,7 +76,15 @@ final class Settings: ObservableObject {
             UserDefaults.standard.object(forKey: key) == nil
                 ? true : UserDefaults.standard.bool(forKey: key)
         }
-        chargeEffect = flag("chargeEffect")
+        // Honor the retired single chargeEffect switch as the default for
+        // both halves.
+        let legacy = (UserDefaults.standard.object(forKey: "chargeEffect") as? Bool) ?? true
+        func effectFlag(_ key: String) -> Bool {
+            UserDefaults.standard.object(forKey: key) == nil
+                ? legacy : UserDefaults.standard.bool(forKey: key)
+        }
+        effectGlow = effectFlag("effectGlow")
+        effectPill = effectFlag("effectPill")
         notifyLowBattery = flag("notifyLowBattery")
         notifyFullyCharged = flag("notifyFullyCharged")
         notifyHighTemp = flag("notifyHighTemp")

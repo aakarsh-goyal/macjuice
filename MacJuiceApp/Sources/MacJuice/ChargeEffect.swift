@@ -17,7 +17,10 @@ final class ChargeEffect {
     private var lastPlay = Date.distantPast
 
     func play(_ snap: BatterySnapshot, title: String) {
-        guard window == nil,
+        let showGlow = Settings.shared.effectGlow
+        let showPill = Settings.shared.effectPill
+        guard showGlow || showPill,
+              window == nil,
               Date().timeIntervalSince(lastPlay) > 5 else { return }  // cable jiggle
         lastPlay = Date()
         // The battery lives in the built-in (notched) display; fall back to
@@ -53,7 +56,8 @@ final class ChargeEffect {
                                     pct: snap.chargePct.map { Int($0.rounded()) },
                                     lowPower: snap.lowPowerMode,
                                     onAC: snap.onAC,
-                                    tone: Color(nsColor: tone))
+                                    tone: Color(nsColor: tone),
+                                    showGlow: showGlow, showPill: showPill)
         let w = NSWindow(contentRect: screen.frame, styleMask: .borderless,
                          backing: .buffered, defer: false)
         w.isOpaque = false
@@ -119,23 +123,29 @@ private struct ChargeEffectView: View {
     let lowPower: Bool
     let onAC: Bool
     let tone: Color
+    let showGlow: Bool
+    let showPill: Bool
 
     var body: some View {
         GeometryReader { geo in
             let edge = ScreenEdgeShape(notch: notch, corner: corner)
             ZStack(alignment: .top) {
-                // An edge vignette (not a flat dim — a sudden brightness drop
-                // across the whole screen is jarring) gives the bloom contrast
-                // on light content while the center never changes.
-                edge.stroke(Color.black.opacity(0.45), lineWidth: 44).blur(radius: 34)
-                // A bloom, not a line: wide soft halos bleeding inward under
-                // progressively tighter, brighter cores.
-                edge.stroke(tone.opacity(0.42), lineWidth: 26).blur(radius: 24)
-                edge.stroke(tone.opacity(0.62), lineWidth: 12).blur(radius: 10)
-                edge.stroke(tone.opacity(0.95), lineWidth: 4).blur(radius: 3)
-                edge.stroke(tone, lineWidth: 1.8)
-                    .shadow(color: tone, radius: 5)
-                pill(in: geo.size)
+                if showGlow {
+                    // An edge vignette (not a flat dim — a sudden brightness
+                    // drop across the whole screen is jarring) gives the bloom
+                    // contrast on light content while the center never changes.
+                    edge.stroke(Color.black.opacity(0.45), lineWidth: 44).blur(radius: 34)
+                    // A bloom, not a line: wide soft halos bleeding inward
+                    // under progressively tighter, brighter cores.
+                    edge.stroke(tone.opacity(0.42), lineWidth: 26).blur(radius: 24)
+                    edge.stroke(tone.opacity(0.62), lineWidth: 12).blur(radius: 10)
+                    edge.stroke(tone.opacity(0.95), lineWidth: 4).blur(radius: 3)
+                    edge.stroke(tone, lineWidth: 1.8)
+                        .shadow(color: tone, radius: 5)
+                }
+                if showPill {
+                    pill(in: geo.size)
+                }
             }
             .opacity(model.glow)
         }

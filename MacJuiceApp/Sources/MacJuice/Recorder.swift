@@ -109,7 +109,7 @@ final class Recorder {
     private func powerStateChanged() {
         model.updateLive()
         let lpm = ProcessInfo.processInfo.isLowPowerModeEnabled
-        if lpm, !wasLPM, Settings.shared.chargeEffect, let snap = model.live {
+        if lpm, !wasLPM, let snap = model.live {
             ChargeEffect.shared.play(snap, title: cachedModelName ?? "MacBook")
         }
         wasLPM = lpm
@@ -118,7 +118,7 @@ final class Recorder {
     /// Red glow the moment the battery dips to 20% on battery power.
     private func lowBatteryEffect(_ snap: BatterySnapshot) {
         let low = isLow(snap)
-        if low, !wasLow, Settings.shared.chargeEffect {
+        if low, !wasLow {
             ChargeEffect.shared.play(snap, title: cachedModelName ?? "MacBook")
         }
         wasLow = low
@@ -154,7 +154,7 @@ final class Recorder {
     private func record(_ snap: BatterySnapshot, source: String = "live") {
         for event in transitions(to: snap) {
             store.insertEvent(ts: snap.ts, type: event)
-            if event == "plug_in", Settings.shared.chargeEffect {
+            if event == "plug_in" {
                 ChargeEffect.shared.play(snap, title: cachedModelName ?? "MacBook")
             }
         }
