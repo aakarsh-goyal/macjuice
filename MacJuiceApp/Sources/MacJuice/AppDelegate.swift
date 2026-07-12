@@ -35,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             UNUserNotificationCenter.current().delegate = self
         }
         recorder.start()
+        BluetoothWatcher.shared.start()
         Settings.shared.autoRegisterLoginItemIfNeeded()
 
         if ProcessInfo.processInfo.environment["MJ_DEMO_GLOW"] != nil {
@@ -43,6 +44,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     let title = self?.model.store.meta("model_name") ?? "MacBook"
                     ChargeEffect.shared.play(snap, title: title)
                 }
+            }
+        }
+        if ProcessInfo.processInfo.environment["MJ_DEMO_BT"] != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                ChargeEffect.shared.playAccessory(name: "AirPods Pro",
+                                                  symbol: "airpods.pro", pct: 87)
             }
         }
         if ProcessInfo.processInfo.environment["MJ_SHOW_PANEL"] != nil {

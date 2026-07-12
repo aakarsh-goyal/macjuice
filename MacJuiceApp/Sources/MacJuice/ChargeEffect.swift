@@ -17,8 +17,44 @@ final class ChargeEffect {
     private var lastPlay = Date.distantPast
 
     func play(_ snap: BatterySnapshot, title: String) {
-        let showGlow = Settings.shared.effectGlow
-        let showPill = Settings.shared.effectPill
+        // The bloom wears the battery's state color: red when low, Low Power
+        // Mode yellow, otherwise charging green — same rule as the pill glyph.
+        let tone: NSColor = {
+            if (snap.chargePct ?? 100) <= 20 { return .systemRed }
+            if snap.lowPowerMode { return .systemYellow }
+            return .systemGreen
+        }()
+        present(symbol: "macbook.gen2", title: title,
+                pct: snap.chargePct.map { Int($0.rounded()) }, showsBattery: true,
+                lowPower: snap.lowPowerMode, bolt: snap.onAC, tone: tone,
+                showGlow: Settings.shared.effectGlow,
+                showPill: Settings.shared.effectPill)
+    }
+
+    /// A Bluetooth accessory joined — same notch pill, the device's own
+    /// glyph, battery only when the peripheral reports one (AirPods do; most
+    /// HID and speakers don't). Pill only: the glow stays the charger's moment.
+    func playAccessory(name: String, symbol: String, pct: Int?, isRetry: Bool = false) {
+        guard Settings.shared.effectBTPill else { return }
+        if window != nil || Date().timeIntervalSince(lastPlay) <= 5 {
+            // Stage is busy (charge moment, or two accessories at once) —
+            // one polite second attempt, then let it go.
+            if !isRetry {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) { [weak self] in
+                    self?.playAccessory(name: name, symbol: symbol, pct: pct,
+                                        isRetry: true)
+                }
+            }
+            return
+        }
+        present(symbol: symbol, title: name, pct: pct, showsBattery: pct != nil,
+                lowPower: false, bolt: false, tone: .systemGreen,
+                showGlow: false, showPill: true)
+    }
+
+    private func present(symbol: String, title: String, pct: Int?,
+                         showsBattery: Bool, lowPower: Bool, bolt: Bool,
+                         tone: NSColor, showGlow: Bool, showPill: Bool) {
         guard showGlow || showPill,
               window == nil,
               Date().timeIntervalSince(lastPlay) > 5 else { return }  // cable jiggle
@@ -43,19 +79,11 @@ final class ChargeEffect {
         let stored = UserDefaults.standard.double(forKey: "glowCornerRadius")
         let radius = stored > 0 ? CGFloat(stored) : (notch != nil ? 26 : 14)
 
-        // The bloom wears the battery's state color: red when low, Low Power
-        // Mode yellow, otherwise charging green — same rule as the pill glyph.
-        let tone: NSColor = {
-            if (snap.chargePct ?? 100) <= 20 { return .systemRed }
-            if snap.lowPowerMode { return .systemYellow }
-            return .systemGreen
-        }()
         let model = EffectModel()
         let view = ChargeEffectView(model: model, notch: notch, corner: radius,
-                                    title: title,
-                                    pct: snap.chargePct.map { Int($0.rounded()) },
-                                    lowPower: snap.lowPowerMode,
-                                    onAC: snap.onAC,
+                                    symbol: symbol, title: title, pct: pct,
+                                    showsBattery: showsBattery,
+                                    lowPower: lowPower, bolt: bolt,
                                     tone: Color(nsColor: tone),
                                     showGlow: showGlow, showPill: showPill)
         let w = NSWindow(contentRect: screen.frame, styleMask: .borderless,
@@ -118,10 +146,12 @@ private struct ChargeEffectView: View {
     @ObservedObject var model: EffectModel
     let notch: CGRect?
     let corner: CGFloat
+    let symbol: String
     let title: String
     let pct: Int?
+    let showsBattery: Bool
     let lowPower: Bool
-    let onAC: Bool
+    let bolt: Bool
     let tone: Color
     let showGlow: Bool
     let showPill: Bool
@@ -161,27 +191,30 @@ private struct ChargeEffectView: View {
         let clipTop = notch?.height ?? 0
         glassCapsule {
             HStack(spacing: 9) {
-                Image(systemName: "macbook.gen2")
+                Image(systemName: symbol)
                     .font(.system(size: 17, weight: .regular))
                     .foregroundStyle(.primary)
                 VStack(spacing: 1) {
                     Text(title)
                         .font(.system(size: 12.5, weight: .semibold))
                         .foregroundStyle(.primary)
-                    HStack(spacing: 5) {
-                        if let pct {
-                            Text("\(pct)%")
-                                .font(.system(size: 11, weight: .medium))
-                                .monospacedDigit()
-                                .foregroundStyle(.secondary)
+                    if showsBattery {
+                        HStack(spacing: 5) {
+                            if let pct {
+                                Text("\(pct)%")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                            }
+                            MiniBattery(pct: pct ?? 100, lowPower: lowPower,
+                                        showBolt: bolt)
                         }
-                        MiniBattery(pct: pct ?? 100, lowPower: lowPower, showBolt: onAC)
                     }
                 }
             }
             .padding(.horizontal, 18)
-            .padding(.top, 6)
-            .padding(.bottom, 7)
+            .padding(.top, showsBattery ? 6 : 10)
+            .padding(.bottom, showsBattery ? 7 : 10)
         }
         .shadow(color: .black.opacity(0.24), radius: 13, y: 5)
         .offset(y: model.pillOut ? 10 : -75)
