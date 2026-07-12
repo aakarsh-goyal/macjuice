@@ -28,5 +28,7 @@
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>Local personal build — no cloud, no telemetry.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>MacJuice shows a connection pill with the battery level when a Bluetooth accessory connects.</string>
 </dict>
 </plist>

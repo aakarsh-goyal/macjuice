@@ -1,4 +1,5 @@
 import AppKit
+import IOBluetooth
 
 /// A Bluetooth accessory in the system's connected list.
 struct BTDevice: Sendable {
@@ -39,53 +40,122 @@ struct BTDevice: Sendable {
     }
 }
 
-/// Watches the system Bluetooth topology and plays the notch pill when an
-/// accessory connects. There is no public notification that covers both
-/// Classic and BLE system connections, so this polls `system_profiler
-/// SPBluetoothDataType -json` (~80 ms, off the main thread) every 5 s.
+/// Plays the notch pill when a Bluetooth accessory connects.
+///
+/// Built to cost nothing at rest: bluetoothd pushes Classic connects to us
+/// (IOBluetooth notifications — speakers, AirPods audio, phones — instant,
+/// zero polling), and a ~1.5 ms in-process paired-list diff every 10 s
+/// catches BLE-only HID that the notification API misses. `system_profiler`
+/// (the only home of battery levels) is spawned exactly once per actual
+/// connect. The whole watcher stands down while the displays sleep.
 @MainActor
-final class BluetoothWatcher {
+final class BluetoothWatcher: NSObject {
     static let shared = BluetoothWatcher()
 
     private var timer: Timer?
+    private var paused = false
     private var known: Set<String> = []
     private var primed = false                   // first poll is baseline only
     private var lastPill: [String: Date] = [:]   // per-device cooldown
 
     func start() {
         guard timer == nil else { return }
+        IOBluetoothDevice.register(forConnectNotifications: self,
+                                   selector: #selector(classicConnected(_:device:)))
+        schedule()
+        // Pills are pointless at a dark display — stop touching bluetoothd.
+        let nc = NSWorkspace.shared.notificationCenter
+        nc.addObserver(forName: NSWorkspace.screensDidSleepNotification,
+                       object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.pause() }
+        }
+        nc.addObserver(forName: NSWorkspace.screensDidWakeNotification,
+                       object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.resume() }
+        }
+    }
+
+    private func schedule() {
         poll()
-        let t = Timer(timeInterval: 5, repeats: true) { [weak self] _ in
+        let t = Timer(timeInterval: 10, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.poll() }
         }
-        t.tolerance = 2
+        t.tolerance = 5
         RunLoop.main.add(t, forMode: .common)
         timer = t
     }
 
+    private func pause() {
+        paused = true
+        timer?.invalidate()
+        timer = nil
+    }
+
+    private func resume() {
+        guard paused else { return }
+        paused = false
+        primed = false   // silent re-baseline: sleep-time connects don't pill
+        schedule()
+    }
+
+    /// bluetoothd's push path — fires the moment a Classic device connects.
+    @objc private func classicConnected(_ note: IOBluetoothUserNotification,
+                                        device: IOBluetoothDevice) {
+        guard !paused, let addr = Self.normalize(device.addressString) else { return }
+        known.insert(addr)   // the safety poll shouldn't re-fire for it
+        celebrate(addr: addr, fallbackName: device.name)
+    }
+
+    /// The safety net: an in-process paired-list diff (~1.5 ms, no subprocess)
+    /// for BLE-only devices whose connects the Classic notification misses.
     private func poll() {
-        Task.detached(priority: .utility) { [weak self] in
-            guard let devices = Self.snapshot() else { return }
-            await self?.handle(devices)
-        }
-    }
-
-    private func handle(_ devices: [BTDevice]) {
-        let current = Set(devices.map(\.address))
-        defer { known = current }
+        let paired = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] ?? []
+        let current = Set(paired.compactMap { d in
+            d.isConnected() ? Self.normalize(d.addressString) : nil
+        })
+        let fresh = current.subtracting(known)
+        known = current
         guard primed else { primed = true; return }
-        for d in devices where !known.contains(d.address) {
-            // AirPods flap on case-open / in-ear checks; don't re-celebrate.
-            guard Date().timeIntervalSince(lastPill[d.address] ?? .distantPast) > 90
-            else { continue }
-            lastPill[d.address] = Date()
-            ChargeEffect.shared.playAccessory(name: d.name, symbol: d.symbolName,
-                                              pct: d.batteryPct)
+        for d in paired {
+            guard let addr = Self.normalize(d.addressString),
+                  fresh.contains(addr) else { continue }
+            celebrate(addr: addr, fallbackName: d.name)
         }
     }
 
-    /// nil = the probe itself failed (don't treat as "everything vanished");
-    /// empty = genuinely nothing connected.
+    /// One system_profiler spawn per actual connect — battery levels and the
+    /// device class live only there.
+    private func celebrate(addr: String, fallbackName: String?) {
+        guard Date().timeIntervalSince(lastPill[addr] ?? .distantPast) > 90
+        else { return }   // AirPods flap on case-open / in-ear checks
+        lastPill[addr] = Date()
+        Task.detached(priority: .utility) {
+            // AirPods surface a rotating private address in the topology, so
+            // fall back to a name match before giving up on battery data.
+            let dev = Self.snapshot()?.first {
+                $0.address.lowercased() == addr || $0.name == fallbackName
+            }
+            await MainActor.run {
+                if let dev {
+                    ChargeEffect.shared.playAccessory(name: dev.name,
+                                                      symbol: dev.symbolName,
+                                                      pct: dev.batteryPct)
+                } else if let name = fallbackName {
+                    let d = BTDevice(address: addr, name: name,
+                                     minorType: nil, batteryPct: nil)
+                    ChargeEffect.shared.playAccessory(name: name,
+                                                      symbol: d.symbolName,
+                                                      pct: nil)
+                }
+            }
+        }
+    }
+
+    private nonisolated static func normalize(_ s: String?) -> String? {
+        s?.lowercased().replacingOccurrences(of: "-", with: ":")
+    }
+
+    /// nil = the probe itself failed; empty = genuinely nothing connected.
     private nonisolated static func snapshot() -> [BTDevice]? {
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/sbin/system_profiler")
