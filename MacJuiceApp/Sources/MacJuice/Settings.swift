@@ -41,10 +41,6 @@ final class Settings: ObservableObject {
     @Published var effectPill: Bool {
         didSet { UserDefaults.standard.set(effectPill, forKey: "effectPill") }
     }
-    /// The same notch pill when a Bluetooth accessory connects.
-    @Published var effectBTPill: Bool {
-        didSet { UserDefaults.standard.set(effectBTPill, forKey: "effectBTPill") }
-    }
 
     @Published var notifyLowBattery: Bool {
         didSet { UserDefaults.standard.set(notifyLowBattery, forKey: "notifyLowBattery") }
@@ -89,7 +85,6 @@ final class Settings: ObservableObject {
         }
         effectGlow = effectFlag("effectGlow")
         effectPill = effectFlag("effectPill")
-        effectBTPill = effectFlag("effectBTPill")
         notifyLowBattery = flag("notifyLowBattery")
         notifyFullyCharged = flag("notifyFullyCharged")
         notifyHighTemp = flag("notifyHighTemp")

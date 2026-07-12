@@ -340,7 +340,6 @@ private struct FooterBar: View {
                 Menu("Power Moments") {
                     Toggle("Edge Glow", isOn: $settings.effectGlow)
                     Toggle("Battery Pill", isOn: $settings.effectPill)
-                    Toggle("Bluetooth Pill", isOn: $settings.effectBTPill)
                 }
                 Menu("Alerts") {
                     Toggle("Low Battery (20% / 10%)", isOn: $settings.notifyLowBattery)

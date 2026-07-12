@@ -17,9 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.5.1</string>
+	<string>1.4.0</string>
 	<key>CFBundleVersion</key>
-	<string>7</string>
+	<string>5</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>LSMinimumSystemVersion</key>
@@ -28,7 +28,5 @@
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>Local personal build — no cloud, no telemetry.</string>
-	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>MacJuice shows a connection pill with the battery level when a Bluetooth accessory connects.</string>
 </dict>
 </plist>
