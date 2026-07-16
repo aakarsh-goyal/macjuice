@@ -21,6 +21,7 @@ final class Recorder {
     private var hiResTimer: Timer?
     private var prevPct: Double?
     private var prevCharging: Int?
+    private var prevIsCharging: Bool?
     private var cachedModelName: String?
     // Edge detectors for the state-glow moments (yellow on LPM-on, red on
     // dipping below 20% on battery); seeded in start() so an already-low
@@ -40,7 +41,10 @@ final class Recorder {
         }
         resolveModelName()
         wasLPM = ProcessInfo.processInfo.isLowPowerModeEnabled
-        if let s = BatteryReader.read() { wasLow = isLow(s) }
+        if let s = BatteryReader.read() {
+            wasLow = isLow(s)
+            prevIsCharging = s.isCharging
+        }
         recordSample()
 
         let s = NSBackgroundActivityScheduler(identifier: "com.macjuice.app.sample")
@@ -131,6 +135,7 @@ final class Recorder {
     private func powerSourcesChanged() {
         guard let snap = BatteryReader.read() else { return }
         model.live = snap
+        chargeCompletion(snap)
         alerts.process(snap, settings: .shared)
         lowBatteryEffect(snap)
         let charging = snap.onAC ? 1 : 0
@@ -145,9 +150,38 @@ final class Recorder {
     private func recordSample() {
         guard let snap = BatteryReader.read() else { return }
         model.live = snap
+        chargeCompletion(snap)
         alerts.process(snap, settings: .shared)
         lowBatteryEffect(snap)
         record(snap)
+        if model.popoverIsLive { model.reloadDerived() }
+    }
+
+    /// Detects the moment the battery stops taking charge — either the macOS
+    /// charge limit kicked in (on AC, IsCharging drops) or it crossed 100% —
+    /// and records how long the whole charge took, measured from the plug_in
+    /// event. Optimized/limited charging that later resumes to a higher level
+    /// simply produces a second, superseding record from the same plug-in.
+    func chargeCompletion(_ snap: BatterySnapshot) {
+        let wasCharging = prevIsCharging ?? false
+        prevIsCharging = snap.isCharging
+        let stopped = snap.onAC && wasCharging && !snap.isCharging
+        guard stopped || crossedFull(snap) else { return }
+        guard let endPct = snap.chargePct,
+              let plugTs = store.lastEventTs(type: "plug_in"),
+              plugTs > (store.lastEventTs(type: "unplug") ?? 0) else { return }
+        let secs = snap.ts - plugTs
+        let startPct = store.chargePctAt(ts: plugTs) ?? endPct
+        // Sub-minute or sub-percent "charges" are top-offs and blips, not
+        // sessions worth reporting.
+        guard secs >= 60, endPct - startPct >= 1 else { return }
+        // One record per level reached: a trickle stop right after crossing
+        // 100% (or a repeat callback) must not double-report, but a resume
+        // that climbs meaningfully higher (80% hold → 100%) should.
+        if let prior = store.lastChargeDone(), prior.ts >= plugTs, endPct <= prior.toPct + 1 { return }
+        let done = ChargeDone(ts: snap.ts, fromPct: startPct, toPct: endPct, secs: secs)
+        store.insertEvent(ts: snap.ts, type: "charge_done", detail: done.detailJSON)
+        alerts.chargeCompleted(done, settings: .shared)
         if model.popoverIsLive { model.reloadDerived() }
     }
 

@@ -27,11 +27,23 @@ struct PopoverView: View {
 // MARK: - Header
 
 private struct HeaderView: View {
+    @EnvironmentObject var model: BatteryModel
     let snap: BatterySnapshot
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            BatteryGlyph(pct: snap.chargePct, onAC: snap.onAC, lowPower: snap.lowPowerMode)
+            Button { model.toggleLowPower() } label: {
+                BatteryGlyph(pct: snap.chargePct, onAC: snap.onAC, lowPower: snap.lowPowerMode)
+                    .opacity(model.lpmSwitching ? 0.45 : 1)
+            }
+            .buttonStyle(GlyphButtonStyle())
+            .focusEffectDisabled()
+            .help("Toggle Low Power Mode")
+            .accessibilityLabel("Low Power Mode")
+            .accessibilityValue(snap.lowPowerMode ? "on" : "off")
+            .onHover { inside in
+                if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+            }
             VStack(alignment: .leading, spacing: 1) {
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
                     Text(snap.chargePct.map { "\(Int($0.rounded()))" } ?? "—")
@@ -55,6 +67,8 @@ private struct HeaderView: View {
                 line = "Full · plugged in"
             } else if snap.isCharging {
                 line = snap.timeRemainingMin.map { "Charging · \(Fmt.hm(Double($0))) to full" } ?? "Charging"
+            } else if snap.heldAtLimit, let pct = snap.chargePct {
+                line = "Charged · \(Int(pct.rounded()))% limit"
             } else {
                 line = "On AC · not charging"
             }
@@ -66,9 +80,19 @@ private struct HeaderView: View {
     }
 }
 
+/// Press feedback for the battery-glyph button without any view @State
+/// (the CLT toolchain can't compile SwiftUI's @State macro).
+private struct GlyphButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.92 : 1)
+            .animation(.spring(response: 0.22, dampingFraction: 0.65), value: configuration.isPressed)
+    }
+}
+
 /// A miniature system-style battery: outline, proportional fill in the
 /// state tone, bolt when on power. The % text beside it carries the value,
-/// so color is never the only channel.
+/// so color is never the only channel. Clicking it toggles Low Power Mode.
 private struct BatteryGlyph: View {
     let pct: Double?
     let onAC: Bool
@@ -275,6 +299,19 @@ private struct InsightsList: View {
             rows.append(Row(icon: "clock.arrow.circlepath", label: "Last session",
                             value: "\(Fmt.hm(Double(s.durationS) / 60)) · −\(Fmt.pct(max(s.pctUsed, 0)))"))
         }
+        // Charge timing: elapsed-so-far while juice is flowing, and once the
+        // battery stops taking charge (limit or 100%), how long it took.
+        if snap.onAC, snap.isCharging, let cs = d.chargeStart, snap.ts > cs.ts {
+            var v = Fmt.hm(Double(snap.ts - cs.ts) / 60)
+            if let from = cs.pct, let cur = snap.chargePct {
+                v += " · \(Int(from.rounded())) → \(Int(cur.rounded()))%"
+            }
+            rows.append(Row(icon: "bolt.badge.clock", label: "Charging for", value: v))
+        } else if let lc = d.lastCharge {
+            rows.append(Row(icon: "bolt.badge.clock",
+                            label: lc.toPct >= 99.5 ? "Full charge took" : "Charge to \(Int(lc.toPct.rounded()))% took",
+                            value: "\(Fmt.hm(Double(lc.secs) / 60)) · from \(Int(lc.fromPct.rounded()))%"))
+        }
         if let est = d.estFullRuntimeMin {
             rows.append(Row(icon: "gauge.with.needle",
                             label: d.estIsShortTerm ? "Full charge (recent use)" : "Full charge lasts",
@@ -432,6 +469,9 @@ private struct FooterBar: View {
         }
         if let est = d.estFullRuntimeMin {
             lines.append("Full-charge runtime estimate: ≈ \(Fmt.hm(est))")
+        }
+        if let lc = d.lastCharge {
+            lines.append("Last charge: \(Int(lc.fromPct.rounded())) → \(Int(lc.toPct.rounded()))% in \(Fmt.hm(Double(lc.secs) / 60))")
         }
 
         NSPasteboard.general.clearContents()

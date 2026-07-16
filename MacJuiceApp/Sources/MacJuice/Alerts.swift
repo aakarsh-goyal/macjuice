@@ -26,10 +26,14 @@ final class AlertEngine {
     func process(_ s: BatterySnapshot, settings: Settings) {
         guard available else { return }
 
-        // Re-arm on state changes.
+        // Re-arm on state changes. Actively charging below the top also
+        // re-arms "full": a charge held at the 80% limit that later resumes
+        // (optimized charging, limit turned off) deserves a second alert
+        // when it tops out — but trickle at 100% must not re-arm.
         if s.onAC {
             notified20 = false
             notified10 = false
+            if s.isCharging, (s.chargePct ?? 100) < 99 { notifiedFull = false }
         } else {
             notifiedFull = false
         }
@@ -68,6 +72,22 @@ final class AlertEngine {
                 prevTempHot = false
                 if t < 38 { notifiedHot = false }
             }
+        }
+    }
+
+    /// A completed charge with its duration — richer than the plain "Fully
+    /// charged" line, and the only alert that fires when the 80% charge limit
+    /// stops the charge (fullyCharged never goes true there). Marks the
+    /// "full" latch so process() doesn't post a duplicate at 100%.
+    func chargeCompleted(_ done: ChargeDone, settings: Settings) {
+        guard available, settings.notifyFullyCharged, !notifiedFull else { return }
+        notifiedFull = true
+        let dur = Fmt.hm(Double(done.secs) / 60)
+        if done.toPct >= 99.5 {
+            post("Fully charged", "Reached 100% in \(dur) (from \(Int(done.fromPct.rounded()))%) — you can unplug.")
+        } else {
+            post("Charged to \(Int(done.toPct.rounded()))% limit",
+                 "Took \(dur) (from \(Int(done.fromPct.rounded()))%).")
         }
     }
 

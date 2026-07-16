@@ -30,6 +30,13 @@ struct BatterySnapshot {
     var fullyCharged = false
     var atCritical = false
     var lowPowerMode = false
+    var notChargingReason: Int?  // ChargerData bitmask; 0x1000000 = held at charge limit
+
+    /// Plugged in and deliberately held below 100% by the user's charge limit
+    /// (the 80% setting in System Settings › Battery).
+    var heldAtLimit: Bool {
+        onAC && !isCharging && !fullyCharged && (notChargingReason ?? 0) & 0x0100_0000 != 0
+    }
 
     var timeRemainingMin: Int?   // to empty (discharging) or to full (charging)
     var serial: String?
@@ -84,6 +91,10 @@ enum BatteryReader {
         s.designMAh = s.designMAh ?? num(props["DesignCapacity"])
         s.maxMAh = s.maxMAh ?? num(props["AppleRawMaxCapacity"])
         s.currentMAh = s.currentMAh ?? num(props["AppleRawCurrentCapacity"])
+
+        if let cd = props["ChargerData"] as? [String: Any] {
+            s.notChargingReason = num(cd["NotChargingReason"]).map(Int.init)
+        }
 
         if let pt = props["PowerTelemetryData"] as? [String: Any] {
             if let load = num(pt["SystemLoad"]), load > 0 { s.systemWatts = load / 1000 }

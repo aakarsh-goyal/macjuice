@@ -24,6 +24,19 @@ struct EventRow {
     let type: String
 }
 
+/// A completed charge: plug-in → the moment the battery stopped taking
+/// current (the user's charge limit, or 100%).
+struct ChargeDone {
+    let ts: Int          // when charging stopped
+    let fromPct: Double
+    let toPct: Double
+    let secs: Int        // plug-in → stop
+
+    var detailJSON: String {
+        String(format: "{\"from_pct\":%.1f,\"to_pct\":%.1f,\"secs\":%d}", fromPct, toPct, secs)
+    }
+}
+
 /// SQLite store sharing the schema (and the database file) of the original
 /// Python collector, so existing history carries straight over. Every public
 /// method serializes on an internal queue; call from any thread.
@@ -114,12 +127,13 @@ final class Store: @unchecked Sendable {
         }
     }
 
-    func insertEvent(ts: Int, type: String) {
+    func insertEvent(ts: Int, type: String, detail: String? = nil) {
         queue.sync {
-            withStatement("INSERT INTO events (ts, type, source, detail) VALUES (?,?,?,NULL)") { st in
+            withStatement("INSERT INTO events (ts, type, source, detail) VALUES (?,?,?,?)") { st in
                 bind(st, 1, ts)
                 bind(st, 2, type)
                 bind(st, 3, "live")
+                bind(st, 4, detail)
                 sqlite3_step(st)
             }
         }
@@ -198,6 +212,43 @@ final class Store: @unchecked Sendable {
                                          charging: colInt(st, 2),
                                          watts: colDouble(st, 3)))
                 }
+            }
+            return out
+        }
+    }
+
+    /// First recorded charge % at or just after a timestamp — the recorder
+    /// writes a sample at the exact moment of every plug_in event, so this
+    /// recovers the percentage the charge started from.
+    func chargePctAt(ts: Int) -> Double? {
+        queue.sync {
+            var out: Double?
+            withStatement("""
+                SELECT charge_pct FROM samples
+                WHERE ts >= ?1 AND ts <= ?1 + 600 AND charge_pct IS NOT NULL
+                ORDER BY ts LIMIT 1
+                """) { st in
+                bind(st, 1, ts)
+                if sqlite3_step(st) == SQLITE_ROW { out = colDouble(st, 0) }
+            }
+            return out
+        }
+    }
+
+    func lastChargeDone() -> ChargeDone? {
+        queue.sync {
+            var out: ChargeDone?
+            withStatement("SELECT ts, detail FROM events WHERE type = 'charge_done' ORDER BY ts DESC LIMIT 1") { st in
+                guard sqlite3_step(st) == SQLITE_ROW,
+                      let ts = colInt(st, 0),
+                      let detail = colText(st, 1),
+                      let data = detail.data(using: .utf8),
+                      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let from = (obj["from_pct"] as? NSNumber)?.doubleValue,
+                      let to = (obj["to_pct"] as? NSNumber)?.doubleValue,
+                      let secs = (obj["secs"] as? NSNumber)?.intValue
+                else { return }
+                out = ChargeDone(ts: ts, fromPct: from, toPct: to, secs: secs)
             }
             return out
         }

@@ -37,8 +37,16 @@ segmented controls — an interactive glass capsule slides between segments.
 Spaces for live monitoring; unpinned, it dismisses on Esc or any outside
 click:
 
-- Charge %, state, and time-to-empty / time-to-full
-- Battery glyph that goes **yellow in Low Power Mode** and **red when low**
+- Charge %, state, and time-to-empty / time-to-full — including
+  **"Charged · 80% limit"** when the macOS charge limit is holding the battery
+- Battery glyph that goes **yellow in Low Power Mode** and **red when low** —
+  **click it to toggle Low Power Mode** (same password-free routes as the
+  gear-menu switch)
+- **Charge timing** — "Charging for 0:42 · 52 → 76%" while the juice flows;
+  the moment the battery stops taking charge (your macOS charge limit, or
+  100%), the row becomes "Charge to 80% took 1:12 · from 52%". If optimized
+  charging later resumes to 100%, the timing updates to the full run. The
+  Fully Charged alert carries the duration too
 - Live tiles: system draw, adapter (rated + actual input watts), temperature,
   **two health numbers** (Apple's smoothed % *and* the raw mAh ratio, which can
   read >100% on a fresh battery), cycle count, current/full charge in mAh
@@ -70,7 +78,9 @@ value, live).
 **Alerts** (native notifications, each toggleable in the gear menu):
 
 - Low battery at 20% and 10%, with the time remaining
-- Fully charged — an unplug reminder
+- Fully charged — an unplug reminder with how long the charge took; with a
+  charge limit set it fires at the limit instead ("Charged to 80% limit —
+  took 1:12")
 - Battery hot — sustained >40 °C
 
 **In the gear menu** — a **Low Power Mode switch**, keep on top, launch at
@@ -124,6 +134,10 @@ and nothing polls faster than it has to:
 No power assertions — the Mac sleeps exactly as it would without MacJuice.
 Observed footprint: **~20 MB RSS, ~0.0% CPU**.
 
+Charge timing rides entirely on the events macOS already pushes — detecting
+"stopped taking charge" is a boolean edge on snapshots the app was reading
+anyway, so the feature adds zero timers, zero polling, and zero subprocesses.
+
 Because it reads IORegistry directly, it also captures what the old
 text-scraping approach missed on modern macOS: true system draw
 (`PowerTelemetryData.SystemLoad`, even on AC when the battery is bypassed),
@@ -170,7 +184,8 @@ Everything lives in one SQLite file you own:
 
 - `samples` — one row per reading: charge %, mAh, watts, system watts,
   temperature, voltage, amperage, health, cycles, adapter, time remaining
-- `events` — `plug_in` / `unplug` / `full_charge` with exact timestamps
+- `events` — `plug_in` / `unplug` / `full_charge` / `charge_done` (with
+  from/to % and duration as JSON detail) with exact timestamps
 
 The schema is compatible with the original Python collector, so old history
 carries over untouched. Query it with plain `sqlite3` whenever you like.

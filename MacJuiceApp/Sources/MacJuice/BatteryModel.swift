@@ -27,6 +27,10 @@ struct DerivedStats {
     var currentSession: DischargeSession?
     var lastSession: DischargeSession?
     var capacityTrendMAhPerMonth: Double?
+    var lastCharge: ChargeDone?
+    /// Open charge session (plugged in, no unplug since): when and at what %
+    /// the charger went in — feeds the live "Charging for" row.
+    var chargeStart: (ts: Int, pct: Double?)?
 }
 
 /// Single observable source of truth for the status item and the popover.
@@ -43,6 +47,10 @@ final class BatteryModel: ObservableObject {
     /// Hover scrub position for the history chart. Lives here rather than in
     /// view @State because the CLT toolchain lacks SwiftUI's macro plugin.
     @Published var chartHover: HistoryPoint?
+
+    /// True while a Low Power Mode switch is in flight (the Shortcuts route
+    /// can take a few seconds cold) — the header glyph dims meanwhile.
+    @Published var lpmSwitching = false
 
     /// End of the current high-resolution logging window, nil when off.
     @Published var hiResUntil: Date?
@@ -62,6 +70,19 @@ final class BatteryModel: ObservableObject {
 
     func updateLive() {
         if let snap = BatteryReader.read() { live = snap }
+    }
+
+    /// Flip Low Power Mode from the header battery glyph. The set side goes
+    /// through PowerMode's password-free route chain; a cancelled or failed
+    /// switch simply leaves the real state unchanged.
+    func toggleLowPower() {
+        guard !lpmSwitching else { return }
+        let target = !(live?.lowPowerMode ?? ProcessInfo.processInfo.isLowPowerModeEnabled)
+        lpmSwitching = true
+        PowerMode.setLowPower(target) { [weak self] ok in
+            self?.lpmSwitching = false
+            if ok { self?.updateLive() }
+        }
     }
 
     /// 2s cadence while (and only while) the popover is open.
@@ -116,6 +137,11 @@ final class BatteryModel: ObservableObject {
             }
             // Anything projecting past 48h is noise, not a runtime.
             if let est = d.estFullRuntimeMin, est > 48 * 60 { d.estFullRuntimeMin = nil }
+            d.lastCharge = store.lastChargeDone().flatMap { now - $0.ts <= 7 * 24 * 3600 ? $0 : nil }
+            if let plugTs = store.lastEventTs(type: "plug_in"),
+               plugTs > (store.lastEventTs(type: "unplug") ?? 0) {
+                d.chargeStart = (plugTs, store.chargePctAt(ts: plugTs))
+            }
             if let cap = store.capacityEndpoints(), cap.last.ts - cap.first.ts >= 14 * 24 * 3600 {
                 let months = Double(cap.last.ts - cap.first.ts) / (30 * 24 * 3600)
                 d.capacityTrendMAhPerMonth = (cap.last.mAh - cap.first.mAh) / months

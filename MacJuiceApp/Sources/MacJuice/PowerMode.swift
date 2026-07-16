@@ -18,7 +18,11 @@ enum PowerMode {
 
     static func setLowPower(_ on: Bool, completion: @escaping @MainActor (Bool) -> Void) {
         lock.lock()
-        if inFlight { lock.unlock(); return }
+        if inFlight {
+            lock.unlock()
+            Task { @MainActor in completion(false) }
+            return
+        }
         inFlight = true
         lock.unlock()
         DispatchQueue.global(qos: .userInitiated).async {

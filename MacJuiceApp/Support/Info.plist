@@ -4,24 +4,24 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>MacJuice</string>
 	<key>CFBundleExecutable</key>
 	<string>MacJuice</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.macjuice.app</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
 	<string>MacJuice</string>
-	<key>CFBundleDisplayName</key>
-	<string>MacJuice</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.4.0</string>
+	<string>1.6.0</string>
 	<key>CFBundleVersion</key>
-	<string>5</string>
-	<key>CFBundleIconFile</key>
-	<string>AppIcon</string>
+	<string>6</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>15.0</string>
 	<key>LSUIElement</key>
